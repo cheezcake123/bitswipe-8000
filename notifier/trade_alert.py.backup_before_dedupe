@@ -1,0 +1,171 @@
+
+from typing import Any, Dict
+
+from notifier.telegram_notifier import send_telegram_message
+
+
+
+
+
+def _num(value: Any, digits: int = 2) -> str:
+
+    try:
+
+        if value is None:
+
+            return "N/A"
+
+        return f"{float(value):.{digits}f}"
+
+    except Exception:
+
+        return "N/A"
+
+
+
+
+
+def _price(value: Any) -> str:
+
+    try:
+
+        if value is None:
+
+            return "N/A"
+
+        return f"${float(value):,.2f}"
+
+    except Exception:
+
+        return "N/A"
+
+
+
+
+
+def _side(signal: Any):
+
+    s = str(signal or "").strip().lower()
+
+
+
+    if s in ["buy", "long", "maesu", "\ub9e4\uc218"]:
+
+        return "LONG"
+
+
+
+    if s in ["sell", "short", "maedo", "\ub9e4\ub3c4"]:
+
+        return "SHORT"
+
+
+
+    return None
+
+
+
+
+
+def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
+
+    try:
+
+        if not payload:
+
+            return {"sent": False, "reason": "no_payload"}
+
+
+
+        guard = payload.get("risk_guard") or {}
+
+        verdict = str(guard.get("verdict") or "").upper()
+
+
+
+        if verdict != "PASS":
+
+            return {"sent": False, "reason": f"risk_guard_not_pass:{verdict}"}
+
+
+
+        side = _side(payload.get("signal"))
+
+        if not side:
+
+            return {"sent": False, "reason": "signal_not_buy_or_sell"}
+
+
+
+        try:
+
+            confidence = float(payload.get("confidence") or 0)
+
+        except Exception:
+
+            confidence = 0.0
+
+
+
+        if confidence < 80:
+
+            return {"sent": False, "reason": f"confidence_too_low:{confidence}"}
+
+
+
+        symbol = payload.get("pair_label") or payload.get("symbol") or "UNKNOWN"
+
+
+
+        message = (
+
+            "BitSwipe A-grade candidate\n\n"
+
+            f"{symbol} / {side}\n"
+
+            f"Confidence: {confidence:.0f}%\n"
+
+            f"Current price: {_price(payload.get('price'))}\n\n"
+
+            f"Entry: {_price(guard.get('entry_price'))}\n"
+
+            f"Stop: {_price(guard.get('stop_price'))}\n"
+
+            f"Target: {_price(guard.get('target_price'))}\n\n"
+
+            f"Risk reward: {_num(guard.get('risk_reward_ratio'), 2)}\n"
+
+            f"Stop distance: {_num(guard.get('stop_distance_percent'), 2)}%\n"
+
+            f"Leverage: {_num(guard.get('leverage'), 1)}x\n"
+
+            f"Leveraged loss: {_num(guard.get('leveraged_loss_percent_on_margin'), 2)}%\n"
+
+            f"Max position for 1pct account risk: {_num(guard.get('max_position_percent_by_account_risk'), 2)}%\n\n"
+
+            "Verdict: Risk Guard PASS\n"
+
+            "Do not chase immediately. Re-check candle close and stop location."
+
+        )
+
+
+
+        result = send_telegram_message(message)
+
+
+
+        return {
+
+            "sent": bool(result.get("ok")),
+
+            "telegram_result": result,
+
+        }
+
+
+
+    except Exception as exc:
+
+        return {"sent": False, "reason": f"alert_error:{exc}"}
+

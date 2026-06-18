@@ -1,0 +1,16 @@
+[Unit]
+Description=__SERVICE_NAME__ BitSwipe FastAPI service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+WorkingDirectory=__APP_DIR__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__APP_DIR__/.venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port __APP_PORT__
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
