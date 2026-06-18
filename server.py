@@ -89,10 +89,10 @@ FIB_COLORS = {
 }
 
 app = FastAPI()
-# 분석(Claude API) + 데이터 fetch가 동시에 실행될 수 있도록 워커 수 충분히 확보
-# 기본 4개는 분석 1건만으로 전부 포화 → CPU 코어 × 4 또는 최소 16
+# Bounded worker pool for blocking analysis/API helpers on small Lightsail boxes.
+# Override with BITSWIPE_WORKER_THREADS when the instance has more headroom.
 _executor = concurrent.futures.ThreadPoolExecutor(
-    max_workers=max(16, (os.cpu_count() or 4) * 4)
+    max_workers=runtime_config.WORKER_THREADS
 )
 
 
@@ -125,6 +125,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LATEST_ANALYSIS_PATH   = os.path.join(BASE_DIR, "data", "latest_analysis.json")
 ANALYSIS_HISTORY_PATH  = os.path.join(BASE_DIR, "data", "analysis_history.jsonl")
 ANALYSIS_HISTORY_MAX   = 500   # JSONL 최대 보관 건수
+_STATIC_TEXT_CACHE: dict[str, tuple[float, str]] = {}
 COMMON_SYMBOLS = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
     "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "TONUSDT",
@@ -132,6 +133,18 @@ COMMON_SYMBOLS = [
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{5,24}$")
 _SYMBOL_UNIVERSE_CACHE: dict = {"ts": 0.0, "symbols": []}
 _SYMBOL_UNIVERSE_TTL_SECS = 60 * 60
+
+
+def _read_static_text(relative_path: str) -> str:
+    path = os.path.join(BASE_DIR, relative_path)
+    mtime = os.path.getmtime(path)
+    cached = _STATIC_TEXT_CACHE.get(path)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    _STATIC_TEXT_CACHE[path] = (mtime, text)
+    return text
 
 
 def normalize_symbol(raw_symbol: str) -> str:
@@ -362,13 +375,36 @@ def _safe(v):
         return None
 
 
+def _fetch_timeframe(symbol: str, tf: str) -> tuple[str, pd.DataFrame]:
+    df = fetch_ohlcv(symbol, tf)
+    return tf, add_all_indicators(df, tf=tf)
+
+
 def _fetch_all(symbol: str) -> dict:
-    result = {}
-    for tf in TIMEFRAMES:
-        df = fetch_ohlcv(symbol, tf)
-        df = add_all_indicators(df, tf=tf)
-        result[tf] = df
-    return result
+    workers = min(runtime_config.MARKET_FETCH_WORKERS, max(1, len(TIMEFRAMES)))
+    if workers <= 1 or len(TIMEFRAMES) <= 1:
+        return {tf: _fetch_timeframe(symbol, tf)[1] for tf in TIMEFRAMES}
+
+    result: dict[str, pd.DataFrame] = {}
+    errors: list[str] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_fetch_timeframe, symbol, tf): tf
+            for tf in TIMEFRAMES
+        }
+        for future in concurrent.futures.as_completed(futures):
+            tf = futures[future]
+            try:
+                fetched_tf, df = future.result()
+                result[fetched_tf] = df
+            except Exception as exc:
+                errors.append(f"{tf}: {type(exc).__name__}: {exc}")
+
+    if not result and errors:
+        raise RuntimeError("; ".join(errors))
+    if errors:
+        print(f"[market-fetch] partial failure for {symbol}: {'; '.join(errors)}")
+    return {tf: result[tf] for tf in TIMEFRAMES if tf in result}
 
 
 def _upsert_ohlcv(df, timestamp, row: dict) -> pd.DataFrame:
@@ -944,6 +980,7 @@ class MarketStreamManager:
             BYBIT_MARKET_WS_URL,
             ping_interval=None,   # Bybit은 JSON ping {"op":"ping"} 사용 — 아래 _bybit_ping 태스크에서 처리
             ping_timeout=None,
+            open_timeout=8,
             close_timeout=5,
             max_size=2**20,
         ) as ws:
@@ -1291,6 +1328,20 @@ class AccountStreamManager:
         async with self._lock:
             return copy.deepcopy(self._payload or {})
 
+    async def update_symbol_metadata(self, broadcast: bool = True) -> bool:
+        symbol = active_symbol()
+        async with self._lock:
+            if not self._payload:
+                return False
+            payload = copy.deepcopy(self._payload)
+            payload["symbol"] = symbol
+            payload["pair_label"] = symbol_to_pair(symbol)
+            payload["active_symbol"] = symbol
+            self._payload = payload
+        if broadcast:
+            await self._broadcast({"type": "account", "data": payload})
+        return True
+
     async def _run_forever(self):
         while not self._stopped:
             if not self._ready.is_set():
@@ -1345,6 +1396,7 @@ class AccountStreamManager:
                 ws_url,
                 ping_interval=None,
                 ping_timeout=None,
+                open_timeout=8,
                 close_timeout=5,
                 max_size=2**20,
             ) as ws:
@@ -1478,6 +1530,7 @@ class MacroSnapshotManager:
 
 
 _macro_snapshot = MacroSnapshotManager()
+_macro_direct_fetch_lock = asyncio.Lock()
 
 
 # 수동 분석 버튼 쿨다운: 10분
@@ -1852,6 +1905,7 @@ async def on_shutdown():
     await _macro_snapshot.stop()
     await _analysis_manager.stop()
     await _schedule_manager.stop()
+    _executor.shutdown(wait=False, cancel_futures=True)
 
 
 @app.get("/api/market-stream")
@@ -1970,7 +2024,7 @@ async def symbol_set(body: SymbolSetRequest):
         raise HTTPException(status_code=503, detail=f"Market data bootstrap failed: {exc}")
 
     with contextlib.suppress(Exception):
-        await _account_stream._refresh_payload(delay=0, broadcast=True)
+        await _account_stream.update_symbol_metadata(broadcast=True)
 
     await _market_stream._broadcast({"type": "snapshot", "data": snapshot})
     return {
@@ -2161,7 +2215,10 @@ def _call_openai_text(system_prompt: str, user_prompt: str, max_tokens: int = 16
     except ImportError:
         raise HTTPException(status_code=500, detail="openai 패키지가 설치되어 있지 않습니다.")
 
-    client = OpenAI(api_key=runtime_config.OPENAI_API_KEY)
+    client = OpenAI(
+        api_key=runtime_config.OPENAI_API_KEY,
+        timeout=runtime_config.LLM_REQUEST_TIMEOUT_SECS,
+    )
     response = client.chat.completions.create(
         model=runtime_config.OPENAI_MODEL,
         messages=[
@@ -2401,7 +2458,11 @@ async def macro_endpoint():
     if _macro_snapshot.is_ready():
         data = await _macro_snapshot.get_snapshot()
     else:
-        data = await asyncio.to_thread(fetch_macro_context)
+        async with _macro_direct_fetch_lock:
+            if _macro_snapshot.is_ready():
+                data = await _macro_snapshot.get_snapshot()
+            else:
+                data = await asyncio.to_thread(fetch_macro_context)
     # _eth_btc, _trad_markets 를 공개 키로 포함
     out = {k: v for k, v in data.items() if not str(k).startswith("_")}
     out["eth_btc"]      = data.get("_eth_btc")
@@ -2566,17 +2627,19 @@ async def performance_endpoint(days: int = 30):
     snapshots: list = []
     try:
         if os.path.exists(history_path):
+            from collections import deque
             with open(history_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except Exception:
-                        continue
-                    if (entry.get("observed_ts") or 0) >= cutoff:
-                        snapshots.append(entry)
+                recent_lines = deque(f, maxlen=runtime_config.PERFORMANCE_HISTORY_MAX_LINES)
+            for line in recent_lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if (entry.get("observed_ts") or 0) >= cutoff:
+                    snapshots.append(entry)
     except Exception as exc:
         return {"error": str(exc), "snapshots": [], "daily": []}
 
@@ -2736,16 +2799,12 @@ async def chzzk_live():
 
 @app.get("/")
 async def root():
-    html_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    with open(html_path, encoding="utf-8") as f:
-        return HTMLResponse(f.read())
+    return HTMLResponse(_read_static_text(os.path.join("static", "index.html")))
 
 
 @app.get("/guide", include_in_schema=False)
 async def guide():
-    path = os.path.join(BASE_DIR, "static", "guide.html")
-    with open(path, encoding="utf-8") as f:
-        return HTMLResponse(f.read())
+    return HTMLResponse(_read_static_text(os.path.join("static", "guide.html")))
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -2781,17 +2840,13 @@ async def og_image():
 @app.get("/robots.txt", include_in_schema=False)
 async def robots():
     from fastapi.responses import PlainTextResponse
-    path = os.path.join(os.path.dirname(__file__), "static", "robots.txt")
-    with open(path, encoding="utf-8") as f:
-        return PlainTextResponse(f.read())
+    return PlainTextResponse(_read_static_text(os.path.join("static", "robots.txt")))
 
 
 @app.get("/sitemap.xml", include_in_schema=False)
 async def sitemap():
     from fastapi.responses import Response as _Resp
-    path = os.path.join(os.path.dirname(__file__), "static", "sitemap.xml")
-    with open(path, encoding="utf-8") as f:
-        return _Resp(content=f.read(), media_type="application/xml")
+    return _Resp(content=_read_static_text(os.path.join("static", "sitemap.xml")), media_type="application/xml")
 
 
 

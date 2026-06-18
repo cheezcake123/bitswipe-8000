@@ -67,7 +67,10 @@ def model_for_provider(model: str) -> str:
 def _openai_text(system: str, user: str, model: str, max_tokens: int) -> str:
     if OpenAI is None:
         raise RuntimeError("openai 패키지가 설치되어 있지 않습니다. pip install -r requirements.txt 를 실행하세요.")
-    client = OpenAI(api_key=runtime_config.OPENAI_API_KEY)
+    client = OpenAI(
+        api_key=runtime_config.OPENAI_API_KEY,
+        timeout=runtime_config.LLM_REQUEST_TIMEOUT_SECS,
+    )
     response = client.chat.completions.create(
         model=model_for_provider(model),
         messages=[
@@ -87,7 +90,10 @@ def _openai_text(system: str, user: str, model: str, max_tokens: int) -> str:
 def _anthropic_text(system: str, user: str, model: str, max_tokens: int) -> str:
     if anthropic is None:
         raise RuntimeError("anthropic 패키지가 설치되어 있지 않습니다. pip install -r requirements.txt 를 실행하세요.")
-    client = anthropic.Anthropic(api_key=runtime_config.CLAUDE_API_KEY)
+    client = anthropic.Anthropic(
+        api_key=runtime_config.CLAUDE_API_KEY,
+        timeout=runtime_config.LLM_REQUEST_TIMEOUT_SECS,
+    )
     msg = client.messages.create(
         model=model_for_provider(model),
         max_tokens=max_tokens,

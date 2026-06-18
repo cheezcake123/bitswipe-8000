@@ -18,7 +18,7 @@ from account_history import attach_account_context_summary
 from time_utils import start_of_kst_day
 
 TRACKED_COLLATERAL_ASSETS = ("USDT", "USDC")
-INCOME_CACHE_TTL_SECS = 8.0
+INCOME_CACHE_TTL_SECS = _cfg.ACCOUNT_INCOME_CACHE_TTL_SECS
 _INCOME_CACHE_LOCK = Lock()
 _INCOME_CACHE: dict[tuple[str, int], dict] = {}
 

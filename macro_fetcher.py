@@ -12,6 +12,7 @@
 import pandas as pd
 import numpy as np
 from typing import Optional
+import config as _cfg
 from macro_history import attach_macro_history_summary
 from http_client import _session as _http  # 프록시 환경변수 무시 세션
 
@@ -163,6 +164,7 @@ def _yf_close_series(ticker: str, period: str = "60d") -> Optional[pd.Series]:
         data = yf.download(
             ticker, period=period, interval="1d",
             progress=False, auto_adjust=True, threads=False,
+            timeout=_cfg.YFINANCE_TIMEOUT_SECS,
         )
         return _extract_close(data)
     except Exception:
@@ -224,6 +226,7 @@ def _fetch_credit_spread() -> Optional[pd.Series]:
         data = yf.download(
             ["HYG", "LQD"], period="90d", interval="1d",
             progress=False, auto_adjust=True, threads=False,
+            timeout=_cfg.YFINANCE_TIMEOUT_SECS,
         )
         close_df = data["Close"].dropna() if data is not None else None
         if close_df is None or close_df.empty:
@@ -262,6 +265,7 @@ def _fetch_btc_etf() -> dict:
         data = yf.download(
             "IBIT", period="60d", interval="1d",
             progress=False, auto_adjust=True, threads=False,
+            timeout=_cfg.YFINANCE_TIMEOUT_SECS,
         )
         if data is None or (hasattr(data, "empty") and data.empty):
             return out
@@ -315,6 +319,7 @@ def _fetch_traditional_markets() -> dict:
             progress=False,
             auto_adjust=True,
             threads=False,
+            timeout=_cfg.YFINANCE_TIMEOUT_SECS,
         )
 
         try:

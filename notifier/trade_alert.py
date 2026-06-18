@@ -4,6 +4,7 @@ import json
 import os
 
 import time
+from collections import deque
 
 from datetime import datetime, timezone
 
@@ -211,13 +212,15 @@ def get_recent_alert_logs(limit: int = 20) -> List[Dict[str, Any]]:
 
 
 
-        lines = LOG_PATH.read_text().splitlines()
+        safe_limit = max(1, min(int(limit), 500))
+        with LOG_PATH.open("r") as f:
+            lines = deque(f, maxlen=safe_limit)
 
         rows = []
 
 
 
-        for line in lines[-limit:]:
+        for line in lines:
 
             try:
 

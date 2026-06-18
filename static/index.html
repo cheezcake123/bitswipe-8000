@@ -3029,7 +3029,7 @@ function retryDelay(baseMs = 2000, jitterMs = 8000) {
 const ANALYSIS_CACHE_KEY = "crypto_analyzer:last_analysis:v1";
 const SYMBOL_QUOTES = ["USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USD", "BTC", "ETH", "BNB"];
 const COMMON_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "TONUSDT"];
-const ANALYSIS_POLL_MS = 1500;
+const ANALYSIS_POLL_MS = 2500;
 const LD_STEPS  = [
   ["바이낸스 데이터 수신","20%"],
   ["보조지표 계산","40%"],
@@ -6311,15 +6311,22 @@ function setGptOutput(id, text, mode = "") {
   el.innerHTML = renderMarkdown(text);
 }
 
-async function postJson(url, body) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(apiErrorMessage(data, res.statusText));
-  return data;
+async function postJson(url, body, timeoutMs = 120000) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: ctrl.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(apiErrorMessage(data, res.statusText));
+    return data;
+  } finally {
+    clearTimeout(tid);
+  }
 }
 
 async function askGptOpinion() {
@@ -6653,7 +6660,7 @@ async function _schedulePollTick() {
 
 function _startSchedulePoll() {
   clearInterval(autoAnalyze._pollTimer);
-  autoAnalyze._pollTimer = setInterval(_schedulePollTick, 30_000);
+  autoAnalyze._pollTimer = setInterval(_schedulePollTick, 60_000);
 }
 
 // ── 공개 함수 (HTML onclick에서 호출) ────────
@@ -7265,7 +7272,7 @@ function showError(msg) {
 // 실시간 동시접속자 수 폴링
 // ══════════════════════════════════════════════
 (function() {
-  const POLL_MS = 15_000;
+  const POLL_MS = 30_000;
   async function fetchConnections() {
     try {
       const res = await fetch("/api/connections");
@@ -7411,7 +7418,7 @@ function showError(msg) {
 
   // 최초 로드 + 10초마다 폴링
   fetchAndFire();
-  setInterval(fetchAndFire, 10000);
+  setInterval(fetchAndFire, 30000);
 
   // ── 주인장 확성기 ──
   let _ownerLastTs    = 0;  // 마지막으로 발사한 메시지 ts
@@ -7475,7 +7482,7 @@ function showError(msg) {
   }
 
   fetchOwnerMessage();
-  setInterval(fetchOwnerMessage, 10000);
+  setInterval(fetchOwnerMessage, 30000);
 
   // ── Chzzk 라이브 상태 ──
   async function fetchChzzkLive() {
@@ -7501,7 +7508,7 @@ function showError(msg) {
     } catch (_) {}
   }
   fetchChzzkLive();
-  setInterval(fetchChzzkLive, 60000); // 1분마다 갱신
+  setInterval(fetchChzzkLive, 120000); // 2 minutes
 
   // ── 주인장 패널 UI ──
   window.openOwnerPanel = function() {

@@ -26,7 +26,7 @@ from typing import Any, Optional
 
 import anthropic
 
-from config import CLAUDE_API_KEY
+from config import CLAUDE_API_KEY, LLM_REQUEST_TIMEOUT_SECS
 
 
 CONSISTENCY_LLM_ENABLED = (
@@ -238,7 +238,10 @@ def _llm_consistency_check(
     report_snippet = (report_text or "")[:2500]
     user = _LLM_USER_TEMPLATE.format(json_repr=json_repr, report_text=report_snippet)
     try:
-        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+        client = anthropic.Anthropic(
+            api_key=CLAUDE_API_KEY,
+            timeout=LLM_REQUEST_TIMEOUT_SECS,
+        )
         msg = client.messages.create(
             model=CONSISTENCY_LLM_MODEL,
             max_tokens=CONSISTENCY_LLM_MAX_TOKENS,

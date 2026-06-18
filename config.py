@@ -28,6 +28,22 @@ def _safe_env(key: str, default: str = "") -> str:
     return val.replace("\r", "").replace("\n", "").strip()
 
 
+def _safe_int_env(key: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(_safe_env(key, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _safe_float_env(key: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(_safe_env(key, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
 # 기본값 "changeme" 와 동일한 값은 "비밀번호 미설정" 으로 취급하기 위한 상수
 _OWNER_PASSWORD_DEFAULT = "changeme"
 
@@ -104,6 +120,14 @@ CANDLE_LIMIT = 200
 
 # 자동 갱신 기본 간격 (초)  ← 30분
 AUTO_REFRESH_INTERVAL = 1800
+
+# Runtime safety knobs for small Lightsail instances. Defaults favor low RAM/CPU.
+WORKER_THREADS = _safe_int_env("BITSWIPE_WORKER_THREADS", 4, 2, 16)
+MARKET_FETCH_WORKERS = _safe_int_env("BITSWIPE_MARKET_FETCH_WORKERS", 3, 1, 5)
+LLM_REQUEST_TIMEOUT_SECS = _safe_float_env("BITSWIPE_LLM_TIMEOUT_SECONDS", 90.0, 15.0, 300.0)
+YFINANCE_TIMEOUT_SECS = _safe_float_env("BITSWIPE_YFINANCE_TIMEOUT_SECONDS", 8.0, 3.0, 30.0)
+ACCOUNT_INCOME_CACHE_TTL_SECS = _safe_float_env("BITSWIPE_ACCOUNT_INCOME_CACHE_TTL_SECONDS", 30.0, 5.0, 300.0)
+PERFORMANCE_HISTORY_MAX_LINES = _safe_int_env("BITSWIPE_PERFORMANCE_HISTORY_MAX_LINES", 50000, 1000, 500000)
 
 # ── 색상 팔레트 ──────────────────────────────
 BG_COLOR      = "#0d0d1a"   # 배경

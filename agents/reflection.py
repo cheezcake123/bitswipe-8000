@@ -22,7 +22,7 @@ from typing import Optional
 
 import anthropic
 
-from config import CLAUDE_API_KEY
+from config import CLAUDE_API_KEY, LLM_REQUEST_TIMEOUT_SECS
 from .memory import FinancialSituationMemory, get_memory
 
 
@@ -393,7 +393,10 @@ def reflect_for_role(
         elapsed_label=_elapsed_label(elapsed_seconds),
     )
 
-    client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+    client = anthropic.Anthropic(
+        api_key=CLAUDE_API_KEY,
+        timeout=LLM_REQUEST_TIMEOUT_SECS,
+    )
     try:
         reflection_text = _call_llm(client, system_prompt, prompt)
     except Exception as exc:

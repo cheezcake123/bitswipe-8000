@@ -1324,7 +1324,10 @@ class _OpenAIChatAdapter:
     def __init__(self) -> None:
         if OpenAI is None:
             raise RuntimeError("openai 패키지가 설치되어 있지 않습니다. pip install -r requirements.txt 를 실행하세요.")
-        self._client = OpenAI(api_key=runtime_config.OPENAI_API_KEY)
+        self._client = OpenAI(
+            api_key=runtime_config.OPENAI_API_KEY,
+            timeout=runtime_config.LLM_REQUEST_TIMEOUT_SECS,
+        )
         self.messages = self
 
     def create(self, **kwargs: Any) -> Any:
@@ -1383,7 +1386,10 @@ def analyze_with_claude(
     else:
         if anthropic is None:
             raise RuntimeError("anthropic 패키지가 설치되어 있지 않습니다. pip install -r requirements.txt 를 실행하세요.")
-        client = anthropic.Anthropic(api_key=runtime_config.CLAUDE_API_KEY)
+        client = anthropic.Anthropic(
+            api_key=runtime_config.CLAUDE_API_KEY,
+            timeout=runtime_config.LLM_REQUEST_TIMEOUT_SECS,
+        )
 
     if pipeline is not None and pipeline.combined_block:
         debate_block = pipeline.combined_block
