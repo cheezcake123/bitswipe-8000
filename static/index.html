@@ -2410,6 +2410,367 @@ a.status-chip { cursor: pointer; }
 }
 
 /* ══ Print ════════════════════════════════════════════════════════ */
+/* Phase 2 UI polish: calmer hierarchy and premium trading-dashboard finish. */
+body {
+  background: #090d12;
+  color: #edf1f5;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1540px;
+  padding: 18px 20px 36px;
+}
+
+.header { order: 10; }
+.error-banner { order: 15; }
+.cards-row { order: 20; }
+.main-grid { order: 30; }
+.macro-section-label,
+.macro-row { order: 40; }
+
+.header {
+  margin-bottom: 0;
+  padding: 14px 16px;
+  background: rgba(15, 20, 27, 0.92);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.24);
+}
+
+.header-title { font-size: 22px; letter-spacing: 0; }
+.header-title::before {
+  width: 26px;
+  height: 26px;
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.28);
+}
+.header-price {
+  font-size: 26px;
+  color: #f5a524;
+}
+
+.status-chip,
+#notif-btn,
+.btn-donate,
+#symbol-select,
+#symbol-custom,
+#symbol-apply,
+.auto-select,
+.interval-select,
+.gpt-select,
+.gpt-textarea {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(17, 23, 31, 0.86);
+}
+
+.btn-analyze {
+  height: 38px;
+  border-radius: 8px;
+  font-weight: 800;
+  box-shadow: 0 8px 22px rgba(247,147,26,0.18);
+}
+
+.cards-row {
+  grid-template-columns: minmax(245px, 1.32fr) repeat(5, minmax(112px, 1fr));
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.sig-badge,
+.metric-card,
+.macro-card,
+.panel-card,
+.chart-area,
+.bottom-section,
+.report-box,
+.gpt-output,
+.agent-turn,
+.memory-card,
+.account-summary-card,
+.account-context-card,
+.position-item,
+.level-card,
+.perf-stat-card,
+.perf-chart-wrap,
+.hist-item {
+  border-radius: 8px;
+  border-color: rgba(255,255,255,0.075);
+  background: rgba(15, 20, 27, 0.9);
+  box-shadow: none;
+}
+
+.sig-badge {
+  min-height: 104px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 16px 18px;
+  border-color: rgba(247,147,26,0.22);
+  background:
+    linear-gradient(180deg, rgba(247,147,26,0.08), rgba(15,20,27,0.94));
+}
+
+.metric-card {
+  min-height: 104px;
+  padding: 15px 12px;
+  justify-content: space-between;
+}
+
+.card-label,
+.panel-card-label,
+.report-section-title,
+.level-label,
+.account-summary-label,
+.account-section-head,
+.account-asset-label,
+.position-line-label,
+.perf-stat-label,
+.macro-section-label {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: #9aa5b3;
+}
+
+.card-value {
+  font-size: 23px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.card-sub,
+.macro-card .card-sub,
+.macro-card .card-note,
+.auto-hint,
+.account-summary-sub {
+  color: #7d8794;
+}
+
+.main-grid {
+  grid-template-columns: minmax(0, 2.12fr) minmax(360px, 0.88fr);
+  gap: 16px;
+}
+
+.chart-area {
+  background: #0f141b;
+  border-color: rgba(247,147,26,0.16);
+  box-shadow: 0 16px 44px rgba(0,0,0,0.28);
+}
+
+.tab-bar {
+  padding: 8px;
+  background: #111821;
+}
+
+.tab-btn {
+  min-height: 38px;
+  border-radius: 7px;
+  font-size: 12.5px;
+}
+
+.tab-btn.active {
+  background: rgba(247,147,26,0.14);
+  color: #ffb13b;
+}
+
+.chart-container {
+  padding: 10px;
+  background: #0d1218;
+}
+
+#chart-plot { height: 720px; }
+
+.panel { gap: 10px; }
+
+.panel-card-header {
+  padding: 12px 15px;
+  background: rgba(19, 26, 35, 0.86);
+}
+
+.panel-card-body { padding: 14px 15px; }
+
+.panel-card:first-child {
+  border-color: rgba(247,147,26,0.2);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.2);
+}
+
+.report-box {
+  max-height: 420px;
+  background: #0d1218;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.gpt-output,
+.gpt-textarea,
+.agent-turn,
+.memory-card,
+.account-summary-card,
+.position-item,
+.level-card,
+.bottom-tab-content,
+.hist-item,
+.perf-chart-wrap,
+.perf-stat-card {
+  background: rgba(12, 17, 24, 0.72);
+}
+
+.macro-section-label {
+  margin: 4px 0 -4px;
+  color: #717b88;
+}
+
+.macro-section-label::before {
+  width: 2px;
+  height: 10px;
+  background: rgba(247,147,26,0.72);
+}
+
+.macro-row,
+#trad-row,
+#sentiment-row {
+  grid-template-columns: repeat(auto-fit, minmax(154px, 1fr)) !important;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.macro-card {
+  min-height: 78px;
+  padding: 12px 10px;
+  background: rgba(13, 18, 25, 0.64);
+}
+
+.macro-card .card-value { font-size: 16px; }
+
+.bottom-section-wrap { min-width: 0; }
+.bottom-section { background: rgba(15, 20, 27, 0.9); }
+.bottom-tab-bar { background: rgba(19, 26, 35, 0.88); }
+
+.chart-placeholder,
+.report-placeholder,
+.account-placeholder,
+.history-empty,
+.perf-no-data,
+.agents-placeholder {
+  color: #727d8b;
+}
+
+button,
+.status-chip,
+.metric-card,
+.macro-card,
+.panel-card,
+.hist-item {
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.metric-card:hover,
+.macro-card:hover,
+.hist-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(19, 26, 35, 0.94);
+}
+
+@media (max-width: 1200px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .panel-card:first-child,
+  #agents-card,
+  .panel-card:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 12px 10px 28px;
+    gap: 12px;
+  }
+  .header {
+    padding: 12px;
+  }
+  .cards-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .sig-badge {
+    grid-column: 1 / -1;
+    min-height: 92px;
+  }
+  .metric-card {
+    min-height: 88px;
+    padding: 12px 10px;
+  }
+  #chart-plot { height: 520px; }
+  .panel {
+    display: flex;
+  }
+  .report-box { max-height: 360px; }
+  .macro-row,
+  #trad-row,
+  #sentiment-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 540px) {
+  .header-brand {
+    align-items: flex-start;
+  }
+  .header-symbol,
+  .header-price {
+    width: auto;
+  }
+  .header-price {
+    margin-left: auto;
+    text-align: right;
+    font-size: 22px;
+  }
+  .symbol-switcher {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+  }
+  #symbol-select,
+  #symbol-custom,
+  #symbol-apply {
+    width: 100%;
+  }
+  .cards-row,
+  .macro-row,
+  #trad-row,
+  #sentiment-row {
+    grid-template-columns: 1fr !important;
+  }
+  .metric-card {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .levels-grid,
+  .perf-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+  #chart-plot { height: 440px; }
+  .panel-card-body { padding: 12px; }
+  #cheer-btn,
+  #owner-open-btn {
+    transform: scale(0.92);
+    transform-origin: bottom;
+  }
+}
+
 @media print {
   body { background: white; color: black; }
   .btn-analyze, #notif-btn, .btn-donate, #cheer-btn, #owner-open-btn, #loading-overlay { display: none !important; }
