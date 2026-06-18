@@ -44,6 +44,21 @@ def _safe_float_env(key: str, default: float, minimum: float, maximum: float) ->
     return max(minimum, min(maximum, value))
 
 
+def _safe_bool_env(key: str, default: bool = False) -> bool:
+    raw = _safe_env(key, "1" if default else "0").lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _safe_csv_env(key: str, default: str) -> list[str]:
+    raw = _safe_env(key, default)
+    values = []
+    for part in raw.split(","):
+        item = part.strip().upper()
+        if item and item not in values:
+            values.append(item)
+    return values
+
+
 # 기본값 "changeme" 와 동일한 값은 "비밀번호 미설정" 으로 취급하기 위한 상수
 _OWNER_PASSWORD_DEFAULT = "changeme"
 
@@ -128,6 +143,34 @@ LLM_REQUEST_TIMEOUT_SECS = _safe_float_env("BITSWIPE_LLM_TIMEOUT_SECONDS", 90.0,
 YFINANCE_TIMEOUT_SECS = _safe_float_env("BITSWIPE_YFINANCE_TIMEOUT_SECONDS", 8.0, 3.0, 30.0)
 ACCOUNT_INCOME_CACHE_TTL_SECS = _safe_float_env("BITSWIPE_ACCOUNT_INCOME_CACHE_TTL_SECONDS", 30.0, 5.0, 300.0)
 PERFORMANCE_HISTORY_MAX_LINES = _safe_int_env("BITSWIPE_PERFORMANCE_HISTORY_MAX_LINES", 50000, 1000, 500000)
+
+# Lightweight multi-asset WATCH scanner. Disabled by default; no LLM calls.
+WATCH_ENABLED = _safe_bool_env("BITSWIPE_WATCH_ENABLED", False)
+WATCH_CRYPTO_SYMBOLS = _safe_csv_env(
+    "BITSWIPE_WATCH_CRYPTO_SYMBOLS",
+    "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT",
+)
+WATCH_TRADFI_SYMBOLS = _safe_csv_env(
+    "BITSWIPE_WATCH_TRADFI_SYMBOLS",
+    "SOXL,QQQ,EWY",
+)
+WATCH_SCAN_INTERVAL_SECONDS = _safe_int_env(
+    "BITSWIPE_WATCH_SCAN_INTERVAL_SECONDS",
+    900,
+    300,
+    86400,
+)
+WATCH_ALERT_COOLDOWN_SECONDS = _safe_int_env(
+    "BITSWIPE_WATCH_ALERT_COOLDOWN_SECONDS",
+    21600,
+    900,
+    172800,
+)
+WATCH_DAILY_CAP = _safe_int_env("BITSWIPE_WATCH_DAILY_CAP", 3, 0, 20)
+WATCH_CACHE_TTL_SECONDS = _safe_int_env("BITSWIPE_WATCH_CACHE_TTL_SECONDS", 300, 60, 3600)
+WATCH_MAX_WORKERS = _safe_int_env("BITSWIPE_WATCH_MAX_WORKERS", 3, 1, 6)
+WATCH_LOG_MAX_LINES = _safe_int_env("BITSWIPE_WATCH_LOG_MAX_LINES", 1000, 100, 10000)
+WATCH_TRADFI_STALE_HOURS = _safe_float_env("BITSWIPE_WATCH_TRADFI_STALE_HOURS", 8.0, 1.0, 72.0)
 
 # ── 색상 팔레트 ──────────────────────────────
 BG_COLOR      = "#0d0d1a"   # 배경
