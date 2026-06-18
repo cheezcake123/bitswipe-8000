@@ -1,5 +1,7 @@
 import unittest
 
+import pandas as pd
+
 from analyzer import (
     _confidence_from_breakdown,
     _extract_analysis_json,
@@ -13,6 +15,58 @@ from analyzer import (
     parse_signal,
     parse_trade_levels,
 )
+
+
+BULL_VIEW = "\uc0c1\ubc29 \uc6b0\uc704"
+BEAR_VIEW = "\ud558\ubc29 \uc6b0\uc704"
+NEUTRAL_VIEW = "\uc911\ub9bd"
+HOLD_SIGNAL = "\ud640\ub4dc"
+
+
+def _risk_payload(view, entry, stop, target, confidence=85):
+    return {
+        "view": view,
+        "confidence": confidence,
+        "confidence_breakdown": {
+            "price_structure": 25,
+            "momentum": 18,
+            "derivatives": 17,
+            "macro": 12,
+            "account_risk_fit": 13,
+            "data_quality_penalty": 0,
+            "counter_scenario_penalty": 0,
+        },
+        "trade": {
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "leverage": 3,
+        },
+    }
+
+
+def _tf_row(direction):
+    if direction == "bearish":
+        return pd.DataFrame([
+            {
+                "close": 100.0,
+                "sma_50": 105.0,
+                "sma_200": 110.0,
+                "macd_hist": -1.0,
+                "rsi": 40.0,
+                "supertrend_dir": -1.0,
+            }
+        ])
+    return pd.DataFrame([
+        {
+            "close": 100.0,
+            "sma_50": 95.0,
+            "sma_200": 90.0,
+            "macd_hist": 1.0,
+            "rsi": 60.0,
+            "supertrend_dir": 1.0,
+        }
+    ])
 
 
 class AnalyzerStructuredOutputTests(unittest.TestCase):
@@ -172,6 +226,61 @@ class AnalyzerStructuredOutputTests(unittest.TestCase):
         self.assertEqual(normalized["confidence"], 1)
         self.assertTrue(adjustments)
 
+    def test_invalid_long_stop_above_entry_is_rejected(self):
+        parsed = _risk_payload(BULL_VIEW, entry=100, stop=101, target=105)
+
+        normalized, adjustments = _normalize_analysis_json(parsed)
+
+        self.assertEqual(normalized["view"], NEUTRAL_VIEW)
+        self.assertEqual(_signal_from_structured(normalized), HOLD_SIGNAL)
+        self.assertLessEqual(normalized["confidence"], 25)
+        self.assertEqual(normalized["trade"]["risk_verdict"], "INVALID")
+        self.assertFalse(normalized["trade"]["worth_taking"])
+        self.assertIsNone(normalized["trade"]["entry"])
+        self.assertTrue(any("Invalid LONG" in item for item in normalized["risk_warnings"]))
+        self.assertTrue(any("risk_validation:" in item for item in adjustments))
+
+    def test_invalid_short_stop_below_entry_is_rejected(self):
+        parsed = _risk_payload(BEAR_VIEW, entry=100, stop=99, target=95)
+
+        normalized, _ = _normalize_analysis_json(parsed)
+
+        self.assertEqual(normalized["view"], NEUTRAL_VIEW)
+        self.assertLessEqual(normalized["confidence"], 25)
+        self.assertEqual(normalized["trade"]["risk_verdict"], "INVALID")
+        self.assertFalse(normalized["trade"]["worth_taking"])
+        self.assertIsNone(normalized["trade"]["stop"])
+        self.assertTrue(any("Invalid SHORT" in item for item in normalized["risk_warnings"]))
+
+    def test_poor_risk_reward_forces_no_trade(self):
+        parsed = _risk_payload(BULL_VIEW, entry=100, stop=98, target=101)
+
+        normalized, _ = _normalize_analysis_json(parsed)
+
+        self.assertEqual(normalized["view"], NEUTRAL_VIEW)
+        self.assertLessEqual(normalized["confidence"], 45)
+        self.assertAlmostEqual(normalized["trade"]["risk_reward_ratio"], 0.5)
+        self.assertFalse(normalized["trade"]["worth_taking"])
+        self.assertTrue(any("Poor risk/reward" in item for item in normalized["risk_warnings"]))
+
+    def test_conflicting_main_timeframes_reduce_confidence(self):
+        parsed = _risk_payload(BULL_VIEW, entry=100, stop=98, target=104)
+        multi_tf_data = {
+            "15m": _tf_row("bullish"),
+            "1h": _tf_row("bullish"),
+            "4h": _tf_row("bearish"),
+            "1d": _tf_row("bearish"),
+        }
+
+        normalized, adjustments = _normalize_analysis_json(parsed, multi_tf_data=multi_tf_data)
+
+        self.assertEqual(normalized["view"], NEUTRAL_VIEW)
+        self.assertLessEqual(normalized["confidence"], 45)
+        self.assertEqual(normalized["trade"]["risk_verdict"], "TIMEFRAME_CONFLICT")
+        self.assertFalse(normalized["trade"]["worth_taking"])
+        self.assertEqual(normalized["timeframe_structure"]["4h"]["direction"], "bearish")
+        self.assertTrue(any("timeframe_structure:" in item for item in adjustments))
+
     def test_normalizes_breakdown_components_before_summing(self):
         parsed = {
             "confidence": 55,
@@ -191,7 +300,7 @@ class AnalyzerStructuredOutputTests(unittest.TestCase):
         self.assertEqual(normalized["confidence_breakdown"]["price_structure"], 30)
         self.assertEqual(normalized["confidence_breakdown"]["data_quality_penalty"], 0)
         self.assertEqual(normalized["confidence_breakdown"]["counter_scenario_penalty"], -10)
-        self.assertEqual(normalized["confidence"], 90)
+        self.assertEqual(normalized["confidence"], 60)
         self.assertGreaterEqual(len(adjustments), 4)
 
     def test_parse_signal_tolerates_markdown_wrapped_fields(self):

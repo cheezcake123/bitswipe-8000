@@ -4,6 +4,7 @@
 import re
 import time
 import json
+import math
 from typing import Any, Optional
 from types import SimpleNamespace
 
@@ -31,6 +32,7 @@ from market_context import fetch_market_context, format_market_context
 from macro_fetcher import fetch_macro_context, format_macro_context
 from analysis_context import build_analysis_context
 from time_utils import now_kst
+from engine.risk_engine import RiskInput, calculate_risk
 from agents import (
     run_bull_bear_debate,
     format_debate_block,
@@ -549,6 +551,13 @@ CONFIDENCE_BREAKDOWN_BOUNDS = {
 }
 CONFIDENCE_MIN = 1
 CONFIDENCE_MAX = 100
+RISK_REWARD_MIN = 1.5
+INVALID_TRADE_CONFIDENCE_CAP = 25
+BLOCKED_TRADE_CONFIDENCE_CAP = 45
+CAUTION_TRADE_CONFIDENCE_CAP = 65
+MISSING_DATA_CONFIDENCE_CAP = 70
+MTF_CONFLICT_CONFIDENCE_CAP = 60
+MTF_HEAVY_CONFLICT_CONFIDENCE_CAP = 45
 
 
 def _clamp_confidence(value: int) -> int:
@@ -999,7 +1008,360 @@ def _confidence_from_breakdown(analysis_json: dict) -> Optional[int]:
     return _clamp_confidence(total)
 
 
-def _normalize_analysis_json(analysis_json: dict) -> tuple[dict, list[str]]:
+def _finite_price_or_none(value: Any) -> Optional[float]:
+    price = _price_or_none(value)
+    if price is None:
+        return None
+    try:
+        return price if math.isfinite(float(price)) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _append_unique_list_value(container: dict, key: str, value: str, limit: int = 8) -> None:
+    if not value:
+        return
+    existing = container.get(key)
+    items = list(existing) if isinstance(existing, list) else []
+    if value not in items:
+        items.append(value)
+    container[key] = items[:limit]
+
+
+def _trade_side_from_view(analysis_json: dict) -> Optional[str]:
+    signal = _signal_from_structured(analysis_json)
+    if signal == "매수":
+        return "long"
+    if signal == "매도":
+        return "short"
+    return None
+
+
+def _set_structured_confidence_cap(
+    analysis_json: dict,
+    cap: int,
+    adjustments: list[str],
+    reason: str,
+) -> None:
+    breakdown_confidence = _confidence_from_breakdown(analysis_json)
+    current = _int_or_none(analysis_json.get("confidence"), CONFIDENCE_MIN, CONFIDENCE_MAX)
+    if current is None:
+        current = breakdown_confidence or 50
+
+    capped = min(current, cap)
+    if capped != current:
+        analysis_json["confidence"] = capped
+        adjustments.append(f"risk_validation: confidence {current} -> {capped} because {reason}")
+    else:
+        analysis_json["confidence"] = current
+
+
+def _force_no_trade(
+    analysis_json: dict,
+    trade: dict,
+    adjustments: list[str],
+    reason: str,
+    cap: int,
+    *,
+    clear_levels: bool = False,
+) -> None:
+    view = _normalize_view_label(analysis_json.get("view") or "")
+    if view != "중립":
+        analysis_json["view"] = "중립"
+        adjustments.append(f"risk_validation: view {view or 'N/A'} -> 중립 because {reason}")
+
+    trade["worth_taking"] = False
+    if clear_levels:
+        trade["entry"] = None
+        trade["stop"] = None
+        trade["target"] = None
+    _set_structured_confidence_cap(analysis_json, cap, adjustments, reason)
+
+
+def _apply_data_quality_confidence_caps(analysis_json: dict, adjustments: list[str]) -> None:
+    cb = analysis_json.get("confidence_breakdown")
+    if not isinstance(cb, dict):
+        return
+
+    data_penalty = cb.get("data_quality_penalty", 0)
+    counter_penalty = cb.get("counter_scenario_penalty", 0)
+    if data_penalty <= -10:
+        _set_structured_confidence_cap(
+            analysis_json,
+            MISSING_DATA_CONFIDENCE_CAP,
+            adjustments,
+            "data quality penalty is severe",
+        )
+    if counter_penalty <= -8:
+        _set_structured_confidence_cap(
+            analysis_json,
+            MTF_CONFLICT_CONFIDENCE_CAP,
+            adjustments,
+            "counter scenario penalty is severe",
+        )
+
+
+def _apply_trade_risk_validation(analysis_json: dict, adjustments: list[str]) -> None:
+    trade = analysis_json.get("trade")
+    if not isinstance(trade, dict):
+        return
+
+    side = _trade_side_from_view(analysis_json)
+    if side is None:
+        trade["worth_taking"] = False
+        trade["risk_verdict"] = "NO_TRADE"
+        return
+
+    entry = _finite_price_or_none(trade.get("entry"))
+    stop = _finite_price_or_none(trade.get("stop"))
+    target = _finite_price_or_none(trade.get("target"))
+    leverage = _int_or_none(trade.get("leverage"), 1, 10) or 1
+
+    missing = [
+        label
+        for label, value in (("entry", entry), ("stop", stop), ("target", target))
+        if value is None
+    ]
+    if missing:
+        warning = (
+            "Directional setup is missing complete entry/stop/target levels; "
+            "treat as no trade until levels are explicit."
+        )
+        trade["risk_verdict"] = "INCOMPLETE"
+        _append_unique_list_value(analysis_json, "risk_warnings", warning)
+        _force_no_trade(
+            analysis_json,
+            trade,
+            adjustments,
+            f"incomplete trade levels: {', '.join(missing)}",
+            BLOCKED_TRADE_CONFIDENCE_CAP,
+        )
+        return
+
+    side_label = "LONG" if side == "long" else "SHORT"
+    invalid_reason = None
+    if side == "long" and stop >= entry:
+        invalid_reason = "Invalid LONG setup: stop loss must be below entry."
+    elif side == "short" and stop <= entry:
+        invalid_reason = "Invalid SHORT setup: stop loss must be above entry."
+    elif side == "long" and target <= entry:
+        invalid_reason = "Invalid LONG setup: take profit must be above entry."
+    elif side == "short" and target >= entry:
+        invalid_reason = "Invalid SHORT setup: take profit must be below entry."
+
+    if invalid_reason:
+        trade["risk_verdict"] = "INVALID"
+        trade["risk_reward_ratio"] = None
+        trade["downside_risk_percent"] = None
+        trade["invalidation"] = stop
+        _append_unique_list_value(analysis_json, "risk_warnings", invalid_reason)
+        _force_no_trade(
+            analysis_json,
+            trade,
+            adjustments,
+            invalid_reason,
+            INVALID_TRADE_CONFIDENCE_CAP,
+            clear_levels=True,
+        )
+        return
+
+    result = calculate_risk(
+        RiskInput(
+            side=side,
+            entry_price=entry,
+            stop_price=stop,
+            target_price=target,
+            leverage=leverage,
+        )
+    )
+    trade["risk_verdict"] = result.get("verdict")
+    trade["worth_taking"] = bool(result.get("valid")) and result.get("verdict") == "PASS"
+    trade["risk_reward_ratio"] = result.get("risk_reward_ratio")
+    trade["downside_risk_percent"] = result.get("stop_distance_percent")
+    trade["invalidation"] = stop
+
+    if not result.get("valid"):
+        errors = result.get("errors") or [f"Invalid {side_label} setup."]
+        for error in errors:
+            _append_unique_list_value(analysis_json, "risk_warnings", str(error))
+        _force_no_trade(
+            analysis_json,
+            trade,
+            adjustments,
+            f"{side_label} setup failed deterministic risk validation",
+            INVALID_TRADE_CONFIDENCE_CAP,
+            clear_levels=True,
+        )
+        return
+
+    warnings = result.get("warnings") or []
+    hard_blocks = result.get("hard_blocks") or []
+    for warning in warnings:
+        _append_unique_list_value(analysis_json, "risk_warnings", str(warning))
+    for block in hard_blocks:
+        _append_unique_list_value(analysis_json, "risk_warnings", str(block))
+
+    rr = result.get("risk_reward_ratio")
+    if rr is not None and rr < RISK_REWARD_MIN:
+        warning = (
+            f"Poor risk/reward ({rr:.2f}:1) is below the minimum "
+            f"{RISK_REWARD_MIN:.1f}:1 threshold; prefer no trade."
+        )
+        _append_unique_list_value(analysis_json, "risk_warnings", warning)
+        _force_no_trade(
+            analysis_json,
+            trade,
+            adjustments,
+            warning,
+            BLOCKED_TRADE_CONFIDENCE_CAP,
+        )
+    elif result.get("verdict") == "CAUTION":
+        _set_structured_confidence_cap(
+            analysis_json,
+            CAUTION_TRADE_CONFIDENCE_CAP,
+            adjustments,
+            f"{side_label} setup has risk warnings",
+        )
+
+
+def _last_row_value(row: Any, key: str) -> Optional[float]:
+    try:
+        value = row.get(key) if hasattr(row, "get") else row[key]
+    except Exception:
+        return None
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return num if math.isfinite(num) else None
+
+
+def _score_timeframe_row(row: Any) -> tuple[str, int]:
+    score = 0
+    close = _last_row_value(row, "close")
+    if close is None:
+        return "missing", 0
+
+    sma_50 = _last_row_value(row, "sma_50")
+    sma_200 = _last_row_value(row, "sma_200")
+    macd_hist = _last_row_value(row, "macd_hist")
+    rsi = _last_row_value(row, "rsi")
+    supertrend_dir = _last_row_value(row, "supertrend_dir")
+
+    if sma_50 is not None:
+        score += 1 if close > sma_50 else -1 if close < sma_50 else 0
+    if sma_200 is not None:
+        score += 1 if close > sma_200 else -1 if close < sma_200 else 0
+    if macd_hist is not None:
+        score += 1 if macd_hist > 0 else -1 if macd_hist < 0 else 0
+    if rsi is not None:
+        score += 1 if rsi >= 55 else -1 if rsi <= 45 else 0
+    if supertrend_dir is not None:
+        score += 1 if supertrend_dir > 0 else -1 if supertrend_dir < 0 else 0
+
+    if score >= 2:
+        return "bullish", score
+    if score <= -2:
+        return "bearish", score
+    return "neutral", score
+
+
+def _timeframe_structure_from_data(multi_tf_data: Optional[dict]) -> dict[str, dict[str, Any]]:
+    if not isinstance(multi_tf_data, dict):
+        return {}
+
+    roles = {
+        "15m": "timing / entry precision",
+        "1h": "short-term structure",
+        "4h": "main trade structure",
+        "1d": "macro trend filter",
+    }
+    structure: dict[str, dict[str, Any]] = {}
+    for tf, role in roles.items():
+        df = multi_tf_data.get(tf)
+        if df is None:
+            structure[tf] = {"role": role, "direction": "missing", "score": 0}
+            continue
+        try:
+            if len(df) == 0:
+                structure[tf] = {"role": role, "direction": "missing", "score": 0}
+                continue
+            row = df.iloc[-1]
+        except Exception:
+            structure[tf] = {"role": role, "direction": "missing", "score": 0}
+            continue
+        direction, score = _score_timeframe_row(row)
+        structure[tf] = {"role": role, "direction": direction, "score": score}
+    return structure
+
+
+def _apply_timeframe_confidence_caps(
+    analysis_json: dict,
+    multi_tf_data: Optional[dict],
+    adjustments: list[str],
+) -> None:
+    structure = _timeframe_structure_from_data(multi_tf_data)
+    if not structure:
+        return
+
+    analysis_json["timeframe_structure"] = structure
+    side = _trade_side_from_view(analysis_json)
+    if side is None:
+        return
+
+    missing = [tf for tf, item in structure.items() if item.get("direction") == "missing"]
+    if missing:
+        note = f"Missing timeframe data: {', '.join(missing)}; confidence is capped."
+        adjustments.append(f"timeframe_structure: {note}")
+        _append_unique_list_value(analysis_json, "data_quality_notes", note)
+        _set_structured_confidence_cap(
+            analysis_json,
+            MISSING_DATA_CONFIDENCE_CAP,
+            adjustments,
+            note,
+        )
+
+    opposite = "bearish" if side == "long" else "bullish"
+    conflicts = [
+        tf
+        for tf, item in structure.items()
+        if item.get("direction") == opposite
+    ]
+    if not conflicts:
+        return
+
+    note = (
+        f"Timeframe conflict against {side.upper()} setup on "
+        f"{', '.join(conflicts)}; confidence reduced."
+    )
+    adjustments.append(f"timeframe_structure: {note}")
+    _append_unique_list_value(analysis_json, "risk_warnings", note)
+
+    main_conflict = "4h" in conflicts
+    macro_conflict = "1d" in conflicts
+    if len(conflicts) >= 3 or (main_conflict and macro_conflict):
+        trade = analysis_json.get("trade") if isinstance(analysis_json.get("trade"), dict) else {}
+        trade["risk_verdict"] = "TIMEFRAME_CONFLICT"
+        _force_no_trade(
+            analysis_json,
+            trade,
+            adjustments,
+            note,
+            MTF_HEAVY_CONFLICT_CONFIDENCE_CAP,
+        )
+    else:
+        _set_structured_confidence_cap(
+            analysis_json,
+            MTF_CONFLICT_CONFIDENCE_CAP,
+            adjustments,
+            note,
+        )
+
+
+def _normalize_analysis_json(
+    analysis_json: dict,
+    multi_tf_data: Optional[dict] = None,
+) -> tuple[dict, list[str]]:
     if not isinstance(analysis_json, dict):
         return {}, []
 
@@ -1013,6 +1375,13 @@ def _normalize_analysis_json(analysis_json: dict) -> tuple[dict, list[str]]:
         normalized["confidence_breakdown"] = normalized_cb
         adjustments.extend(breakdown_adjustments)
 
+    _append_unique_list_value(
+        normalized,
+        "risk_warnings",
+        "Sudden macro/news/liquidation events can invalidate technical setups; "
+        "use low leverage, small position sizing, and stop-loss discipline.",
+    )
+
     breakdown_confidence = _confidence_from_breakdown(normalized)
     stated_confidence = _int_or_none(normalized.get("confidence"), CONFIDENCE_MIN, CONFIDENCE_MAX)
     if breakdown_confidence is not None and (
@@ -1024,6 +1393,10 @@ def _normalize_analysis_json(analysis_json: dict) -> tuple[dict, list[str]]:
             f"confidence {before} -> {breakdown_confidence} "
             "because confidence_breakdown sum is authoritative"
         )
+
+    _apply_data_quality_confidence_caps(normalized, adjustments)
+    _apply_trade_risk_validation(normalized, adjustments)
+    _apply_timeframe_confidence_caps(normalized, multi_tf_data, adjustments)
 
     return normalized, adjustments
 
@@ -1062,9 +1435,12 @@ def _render_report_from_structured(analysis_json: dict) -> str:
     if view not in VIEW_TO_SIGNAL:
         view = "중립"
 
-    confidence = _confidence_from_breakdown(analysis_json)
-    if confidence is None:
-        confidence = _int_or_none(analysis_json.get("confidence"), CONFIDENCE_MIN, CONFIDENCE_MAX)
+    breakdown_confidence = _confidence_from_breakdown(analysis_json)
+    stated_confidence = _int_or_none(analysis_json.get("confidence"), CONFIDENCE_MIN, CONFIDENCE_MAX)
+    if breakdown_confidence is not None and stated_confidence is not None:
+        confidence = min(breakdown_confidence, stated_confidence)
+    else:
+        confidence = breakdown_confidence if breakdown_confidence is not None else stated_confidence
     if confidence is None:
         confidence = 50
 
@@ -1080,6 +1456,21 @@ def _render_report_from_structured(analysis_json: dict) -> str:
     actions = analysis_json.get("actions") if isinstance(analysis_json.get("actions"), dict) else {}
 
     leverage = _int_or_none(trade.get("leverage"), 1, 10) or 1
+    risk_reward = _finite_price_or_none(trade.get("risk_reward_ratio"))
+    downside_risk = _finite_price_or_none(trade.get("downside_risk_percent"))
+    invalidation_price = (
+        trade.get("invalidation")
+        if trade.get("invalidation") is not None
+        else analysis_json.get("invalidation")
+    )
+    risk_reward_text = "N/A" if risk_reward is None else f"{risk_reward:.2f}:1"
+    downside_risk_text = "N/A" if downside_risk is None else f"{downside_risk:.2f}%"
+    if trade.get("worth_taking") is True:
+        worth_taking_text = "가능"
+    elif trade.get("worth_taking") is False:
+        worth_taking_text = "노트레이드"
+    else:
+        worth_taking_text = "N/A"
 
     facts = _clean_report_items(
         analysis_json.get("key_facts"),
@@ -1092,6 +1483,14 @@ def _render_report_from_structured(analysis_json: dict) -> str:
     counters = _clean_report_items(
         analysis_json.get("counter_scenario"),
         ["주요 트리거가 반대로 작동하면 현재 관점의 우위가 약해집니다."],
+    )
+    risk_warnings = _clean_report_items(
+        analysis_json.get("risk_warnings"),
+        [
+            "Sudden macro/news/liquidation events can invalidate technical setups; "
+            "use low leverage, small position sizing, and stop-loss discipline."
+        ],
+        limit=4,
     )
 
     aggressive = _clean_report_text(
@@ -1142,12 +1541,21 @@ def _render_report_from_structured(analysis_json: dict) -> str:
         f"• 손절가: {_format_report_price(trade.get('stop'))}",
         f"• 목표가: {_format_report_price(trade.get('target'))}",
         f"• 권장 레버리지: {leverage}배",
+        f"• 손익비: {risk_reward_text}",
+        f"• 무효화 레벨: {_format_report_price(invalidation_price)}",
+        f"• 손절 리스크: {downside_risk_text}",
+        f"• 거래 가치: {worth_taking_text}",
         "",
         "📝 대응",
         f"• 공격적: {aggressive}",
         f"• 보수적: {conservative}",
         "",
         f"⚠️ 관점이 약해지는 조건: {invalidation}",
+        "",
+        "⚠ 리스크 경고",
+    ])
+    lines.extend(f"• {item}" for item in risk_warnings)
+    lines.extend([
         "",
         f"💬 한줄 요약: {summary}",
     ])
@@ -1476,12 +1884,25 @@ def analyze_with_claude(
     analysis_json = tool_json if tool_json is not None else _extract_analysis_json(raw_text)
     analysis_adjustments: list[str] = []
     if isinstance(analysis_json, dict) and analysis_json:
-        analysis_json, analysis_adjustments = _normalize_analysis_json(analysis_json)
+        analysis_json, analysis_adjustments = _normalize_analysis_json(
+            analysis_json,
+            multi_tf_data=multi_tf_data,
+        )
     report_text = _strip_analysis_json_block(raw_text) or raw_text
     report_meta = parse_report_sections(report_text)
     report_generated_from_json = False
 
-    if isinstance(analysis_json, dict) and analysis_json and not report_meta["format_ok"]:
+    trade_meta = analysis_json.get("trade") if isinstance(analysis_json, dict) else None
+    strict_risk_metadata = isinstance(trade_meta, dict) and (
+        "risk_verdict" in trade_meta or "risk_reward_ratio" in trade_meta
+    )
+    strict_risk_adjusted = strict_risk_metadata or any(
+        item.startswith(("risk_validation:", "timeframe_structure:"))
+        for item in analysis_adjustments
+    )
+    if isinstance(analysis_json, dict) and analysis_json and (
+        strict_risk_adjusted or not report_meta["format_ok"]
+    ):
         rendered_report = _render_report_from_structured(analysis_json)
         rendered_meta = parse_report_sections(rendered_report)
         if rendered_report and rendered_meta["format_ok"]:
