@@ -786,7 +786,9 @@ class MarketStreamManager:
         self._stopped = False
         self._runner_task = asyncio.create_task(self._run_forever(), name="binance-market-stream")
         self._price_tick_task = asyncio.create_task(self._periodic_price_tick(), name="price-tick-1s")
-        self._forming_refresh_task = asyncio.create_task(self._forming_indicator_refresh(), name="forming-refresh-2s")
+        # EMERGENCY: disabled on small 512MB server because 2s pandas/chart recompute can block API responses
+
+        self._forming_refresh_task = None
 
     async def stop(self):
         self._stopped = True
