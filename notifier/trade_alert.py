@@ -26,6 +26,8 @@ STATE_PATH = DATA_DIR / "telegram_alert_state.json"
 
 LOG_PATH = DATA_DIR / "telegram_alert_log.jsonl"
 
+FINAL_VERDICT_LOG_PATH = DATA_DIR.parent / "logs" / "final_verdicts.jsonl"
+
 DEFAULT_COOLDOWN_SECONDS = 3600
 
 
@@ -338,6 +340,172 @@ def _mark_sent(signature: str) -> None:
 
 
 
+
+
+
+def _float_or_none(value: Any):
+
+    try:
+
+        if value is None:
+
+            return None
+
+        return float(value)
+
+    except Exception:
+
+        return None
+
+
+
+
+
+def _normalize_backtest_symbol(value: Any) -> str:
+
+    text = str(value or "").strip().upper()
+
+    text = text.replace("/", "").replace("-", "").replace("_", "")
+
+    return text
+
+
+
+
+
+def _append_final_verdict_log(payload: Dict[str, Any], result: Dict[str, Any]) -> None:
+
+    """
+
+    Append final risk-guard verdict data for offline validation/backtesting.
+
+    This never affects Telegram sending.
+
+    """
+
+    try:
+
+        if not isinstance(payload, dict) or not payload:
+
+            return
+
+
+
+        guard = payload.get("risk_guard") or {}
+
+
+
+        raw_symbol = (
+
+            result.get("symbol")
+
+            or payload.get("pair_label")
+
+            or payload.get("symbol")
+
+            or "UNKNOWN"
+
+        )
+
+        symbol = _normalize_backtest_symbol(raw_symbol)
+
+
+
+        side = result.get("side") or _side(payload.get("signal"))
+
+
+
+        confidence = result.get("confidence")
+
+        if confidence is None:
+
+            confidence = _float_or_none(payload.get("confidence"))
+
+
+
+        sent = bool(result.get("sent"))
+
+
+
+        row = {
+
+            "ts": _now_iso(),
+
+            "source": "trade_alert",
+
+            "symbol": symbol,
+
+            "display_symbol": raw_symbol,
+
+            "market_type": "BINANCE" if symbol.endswith("USDT") else "UNKNOWN",
+
+
+
+            "direction": side,
+
+            "decision": "FINAL_ALERT_SENT" if sent else "FINAL_SKIPPED",
+
+            "grade": None,
+
+            "rule_score": None,
+
+            "confidence": confidence,
+
+
+
+            "entry": _float_or_none(guard.get("entry_price")),
+
+            "stop": _float_or_none(guard.get("stop_price")),
+
+            "target": _float_or_none(guard.get("target_price")),
+
+            "rr": _float_or_none(guard.get("risk_reward_ratio")),
+
+
+
+            "risk_verdict": guard.get("verdict"),
+
+            "worth_taking": guard.get("worth_taking"),
+
+            "stop_distance_percent": _float_or_none(guard.get("stop_distance_percent")),
+
+            "leverage": _float_or_none(guard.get("leverage")),
+
+            "max_position_percent_by_account_risk": _float_or_none(
+
+                guard.get("max_position_percent_by_account_risk")
+
+            ),
+
+
+
+            "sent": sent,
+
+            "alert_sent": sent,
+
+            "reason": result.get("reason"),
+
+            "telegram_ok": result.get("telegram_ok"),
+
+            "signature": result.get("signature"),
+
+        }
+
+
+
+        FINAL_VERDICT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+
+        with FINAL_VERDICT_LOG_PATH.open("a", encoding="utf-8") as f:
+
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    except Exception:
+
+        return
+
+
 def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
@@ -356,6 +524,7 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             _append_log(result)
 
+            _append_final_verdict_log(payload, result)
             return result
 
 
@@ -386,6 +555,7 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             _append_log(result)
 
+            _append_final_verdict_log(payload, result)
             return result
 
 
@@ -408,6 +578,7 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             _append_log(result)
 
+            _append_final_verdict_log(payload, result)
             return result
 
 
@@ -442,6 +613,7 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             _append_log(result)
 
+            _append_final_verdict_log(payload, result)
             return result
 
 
@@ -478,6 +650,7 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             _append_log(result)
 
+            _append_final_verdict_log(payload, result)
             return result
 
 
@@ -552,6 +725,7 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
+        _append_final_verdict_log(payload, result)
         return {
 
             **result,
@@ -580,5 +754,6 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         _append_log(result)
 
+        _append_final_verdict_log(payload, result)
         return result
 
