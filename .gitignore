@@ -78,3 +78,31 @@ logs/
 
 tmp/
 
+# BitSwipe runtime logs and local backups
+
+logs/*.log
+
+logs/*.jsonl
+
+data/*_history.jsonl
+
+data/*_alert_log.jsonl
+
+backups/
+
+*.bak
+
+*.backup*
+
+*.broken*
+
+*.before_*
+
+*.tmp
+
+__pycache__/
+
+*.pyc
+
+.env
+
