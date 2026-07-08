@@ -53,3 +53,34 @@ BitSwipe의 목표는 진입 신호를 많이 만드는 것이 아니라, 위험
 
 - LLM JSON output
 
+
+
+
+## Phase 1.5: Backtest Scaffold
+
+
+
+candidate logging 다음 단계는 target-before-stop 검증 스크립트다.
+
+
+
+목표:
+
+1. logs/candidates.jsonl을 읽는다.
+
+2. entry, stop, target, direction이 있는 후보만 검증한다.
+
+3. 신호 이후 일정 시간의 Binance 선물 캔들을 가져온다.
+
+4. target을 먼저 쳤는지, stop을 먼저 쳤는지 판정한다.
+
+5. 등급별, decision별 결과를 요약한다.
+
+
+
+현재 pre-AI scanner 로그에는 entry/stop/target이 아직 null일 수 있다.
+
+이 경우 backtest script는 SKIPPED_MISSING_LEVELS로 분류한다.
+
+이는 정상 동작이며, 이후 final analyzer verdict logging이 붙으면 실제 WIN/LOSS 판정이 가능해진다.
+
