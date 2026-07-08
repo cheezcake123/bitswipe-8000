@@ -43,6 +43,20 @@ except Exception:
 
 
 
+
+try:
+
+    from candidate_logger import append_candidate_log
+
+except Exception:
+
+    def append_candidate_log(candidate):
+
+        return
+
+
+
+
 LOG_PATH = ROOT / "logs" / "watchlist_scan.log"
 
 STATE_PATH = ROOT / "logs" / "watchlist_ai_state.json"
@@ -1045,6 +1059,195 @@ def format_candidate_summary(candidates, selected, skipped_cooldown):
 
 
 
+
+
+def get_candidate_blocked_reason(result):
+
+    if result.get("should_analyze"):
+
+        return None
+
+
+
+    try:
+
+        if float(result.get("estimated_rr") or 0) < MIN_ESTIMATED_RR:
+
+            return "LOW_ESTIMATED_RR"
+
+    except Exception:
+
+        pass
+
+
+
+    if result.get("direction") == "WAIT":
+
+        return "NO_CLEAR_DIRECTION"
+
+
+
+    try:
+
+        if int(result.get("score") or 0) < MIN_SCORE_TO_ANALYZE:
+
+            return "LOW_RULE_SCORE"
+
+    except Exception:
+
+        pass
+
+
+
+    return "NOT_ELIGIBLE_FOR_AI"
+
+
+
+
+
+def build_candidate_log_row(result, candidate_symbols=None, selected_symbols=None, alert_sent=False):
+
+    candidate_symbols = candidate_symbols or set()
+
+    selected_symbols = selected_symbols or set()
+
+
+
+    symbol = result.get("symbol")
+
+    ai_called = symbol in selected_symbols
+
+    eligible_for_ai = bool(result.get("should_analyze"))
+
+
+
+    if ai_called:
+
+        decision = "AI_CALLED"
+
+    elif eligible_for_ai or symbol in candidate_symbols:
+
+        decision = "AI_CANDIDATE"
+
+    elif result.get("direction") == "WAIT":
+
+        decision = "WAIT"
+
+    else:
+
+        decision = "BLOCK"
+
+
+
+    reasons = result.get("reasons") or []
+
+
+
+    return {
+
+        "ts": datetime.now(timezone.utc).isoformat(),
+
+        "symbol": symbol,
+
+        "market_type": result.get("market_type"),
+
+        "direction": result.get("direction"),
+
+        "decision": decision,
+
+        "grade": result.get("grade"),
+
+        "rule_score": result.get("score"),
+
+        "confidence": None,
+
+
+
+        # Entry/stop/target are not produced by this pre-AI scanner yet.
+
+        # They will be filled later by the analyzer/final verdict logging layer.
+
+        "entry": None,
+
+        "stop": None,
+
+        "target": None,
+
+
+
+        "last": result.get("last"),
+
+        "rr": result.get("estimated_rr"),
+
+        "support": result.get("support"),
+
+        "resistance": result.get("resistance"),
+
+        "move_15m": result.get("move_15m"),
+
+        "move_1h": result.get("move_1h"),
+
+        "move_4h": result.get("move_4h"),
+
+        "move_12h": result.get("move_12h"),
+
+        "volume_spike": result.get("vol_spike"),
+
+        "atr_pct": result.get("atr_pct"),
+
+
+
+        "eligible_for_ai": eligible_for_ai,
+
+        "ai_called": ai_called,
+
+        "alert_sent": bool(alert_sent and ai_called),
+
+        "blocked_reason": get_candidate_blocked_reason(result),
+
+        "reasons": reasons,
+
+        "notes": "; ".join(str(x) for x in reasons),
+
+    }
+
+
+
+
+
+def log_candidate_batch(all_results, candidates=None, selected=None, alert_sent=False):
+
+    candidates = candidates or []
+
+    selected = selected or []
+
+
+
+    candidate_symbols = {c.get("symbol") for c in candidates}
+
+    selected_symbols = {c.get("symbol") for c in selected}
+
+
+
+    for result in all_results:
+
+        append_candidate_log(
+
+            build_candidate_log_row(
+
+                result,
+
+                candidate_symbols=candidate_symbols,
+
+                selected_symbols=selected_symbols,
+
+                alert_sent=alert_sent,
+
+            )
+
+        )
+
+
 def main():
 
     load_env_file()
@@ -1142,6 +1345,10 @@ def main():
         }
 
         write_log("NO_AI_CANDIDATE " + compact(summary))
+
+
+
+        log_candidate_batch(all_results, candidates=[], selected=[], alert_sent=False)
 
         write_log("SCAN_DONE")
 
@@ -1279,11 +1486,17 @@ def main():
 
     # Enable by setting WATCH_SEND_AI_REQUEST_NOTICE=1 in .env.
 
+    alert_sent = False
+
     if os.getenv("WATCH_SEND_AI_REQUEST_NOTICE", "0") == "1" and selected:
 
         send_telegram(format_candidate_summary(candidates, selected, skipped_cooldown))
 
+        alert_sent = True
 
+
+
+    log_candidate_batch(all_results, candidates=candidates, selected=selected, alert_sent=alert_sent)
 
     write_log("SCAN_DONE " + compact({
 
