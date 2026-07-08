@@ -422,7 +422,7 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-        if confidence < 80:
+        if confidence < 75:
 
             result = {
 
