@@ -419,6 +419,7 @@ def _blocked_reason_ko(reason):
         "NO_CLEAR_DIRECTION": "방향 불명확",
 
         "LOW_ESTIMATED_RR": "손익비 부족",
+        "HIGH_SCORE_LOW_RR_REVIEW_ONLY": "점수는 높지만 손익비 부족",
 
         "RR_UNAVAILABLE": "손익비 계산 불가",
 
@@ -1111,6 +1112,15 @@ def score_candidate(symbol, rows, market_type):
 
     should_analyze = score >= MIN_SCORE_TO_ANALYZE and direction != "WAIT" and rr >= MIN_ESTIMATED_RR
 
+    # Review-only means the setup has enough structure/score to be worth tracking,
+    # but RR is too low for AI analysis or entry permission.
+    review_only = (
+        score >= MIN_SCORE_TO_ANALYZE
+        and direction != "WAIT"
+        and rr > 0
+        and rr < MIN_ESTIMATED_RR
+    )
+
 
 
     return {
@@ -1124,6 +1134,8 @@ def score_candidate(symbol, rows, market_type):
         "grade": grade,
 
         "should_analyze": should_analyze,
+        "review_only": review_only,
+        "review_reason": "HIGH_SCORE_LOW_RR_REVIEW_ONLY" if review_only else None,
 
         "direction": direction,
 
@@ -1328,6 +1340,9 @@ def get_candidate_blocked_reason(result):
     if result.get("should_analyze"):
 
         return None
+
+        if result.get("review_only"):
+            return "HIGH_SCORE_LOW_RR_REVIEW_ONLY"
 
 
 
