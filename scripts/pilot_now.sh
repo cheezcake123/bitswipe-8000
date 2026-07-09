@@ -85,6 +85,12 @@ echo ""
 
 
 
+echo "===== 8-1) Strict Policy Scoreboard ====="
+
+python3 scripts/policy_scoreboard.py || true
+
+echo ""
+
 echo "===== 9) 최신 자동 루프 로그 ====="
 
 grep -E "SCAN_DONE|PREDICTION_STORE|PREDICTION_EVAL|PREDICTION_BACKFILL|POLICY_SCAN|POLICY_NOTIFY|POLICY_TELEGRAM|PILOT_SCAN|PILOT_NOTIFY|NO_CANDIDATE_STATUS" logs/watchlist_scan.log | tail -n 80 || true
