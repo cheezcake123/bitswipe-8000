@@ -69,6 +69,12 @@ echo ""
 
 
 
+echo "===== 6-1) Prediction Rule Recommender ====="
+
+python3 scripts/prediction_rule_recommender.py || true
+
+echo ""
+
 echo "===== 7) 최신 자동 루프 로그 ====="
 
 grep -E "SCAN_DONE|PREDICTION_STORE|PREDICTION_EVAL|PREDICTION_BACKFILL|PILOT_SCAN|PILOT_NOTIFY|PILOT_TELEGRAM|NO_CANDIDATE_STATUS" logs/watchlist_scan.log | tail -n 60 || true
