@@ -297,6 +297,242 @@ def send_telegram(text):
 
 
 
+
+
+
+def _status_notice_state_path():
+
+    from pathlib import Path as _Path
+
+    return _Path("logs/watch_no_candidate_status_state.json")
+
+
+
+
+
+def should_send_no_candidate_status():
+
+    enabled = os.getenv("WATCH_SEND_NO_CANDIDATE_STATUS", "1")
+
+    if enabled != "1":
+
+        return False
+
+
+
+    try:
+
+        interval = int(os.getenv("WATCH_NO_CANDIDATE_STATUS_INTERVAL_SECONDS", "21600"))
+
+    except Exception:
+
+        interval = 21600
+
+
+
+    path = _status_notice_state_path()
+
+    now = time.time()
+
+
+
+    try:
+
+        if path.exists():
+
+            data = json.loads(path.read_text(encoding="utf-8"))
+
+            last_sent_ts = float(data.get("last_sent_ts") or 0)
+
+            if now - last_sent_ts < interval:
+
+                remaining = int(interval - (now - last_sent_ts))
+
+                write_log("NO_CANDIDATE_STATUS_SKIP cooldown_remaining=" + str(max(0, remaining)))
+
+                return False
+
+    except Exception as e:
+
+        write_log("NO_CANDIDATE_STATUS_STATE_READ_ERROR " + type(e).__name__ + ": " + str(e))
+
+
+
+    return True
+
+
+
+
+
+def mark_no_candidate_status_attempt(sent):
+
+    path = _status_notice_state_path()
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {
+
+        "last_sent_ts": time.time(),
+
+        "sent": bool(sent),
+
+    }
+
+    try:
+
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    except Exception as e:
+
+        write_log("NO_CANDIDATE_STATUS_STATE_WRITE_ERROR " + type(e).__name__ + ": " + str(e))
+
+
+
+
+
+def _blocked_reason_ko(reason):
+
+    mapping = {
+
+        "NO_CLEAR_DIRECTION": "방향 불명확",
+
+        "LOW_ESTIMATED_RR": "손익비 부족",
+
+        "RR_UNAVAILABLE": "손익비 계산 불가",
+
+        "LOW_RULE_SCORE": "룰 점수 부족",
+
+        "NOT_ELIGIBLE_FOR_AI": "AI 검토 조건 미충족",
+
+        None: "없음",
+
+    }
+
+    return mapping.get(reason, str(reason))
+
+
+
+
+
+def format_no_candidate_status_ko(all_results, candidates, selected, skipped_cooldown):
+
+    from collections import Counter
+
+
+
+    reason_counts = Counter(get_candidate_blocked_reason(r) for r in all_results)
+
+
+
+    lines = []
+
+    lines.append("[BitSwipe 상태 보고]")
+
+    lines.append("")
+
+    lines.append("현재 진입 허가 없음.")
+
+    lines.append("")
+
+    lines.append("최근 스캔:")
+
+    lines.append(f"- 검사 심볼: {len(all_results)}개")
+
+    lines.append(f"- AI 후보 통과: {len(candidates)}개")
+
+    lines.append(f"- AI 요청: {len(selected)}회")
+
+    lines.append(f"- 쿨다운 보류: {len(skipped_cooldown)}개")
+
+    lines.append("")
+
+    lines.append("차단 사유:")
+
+
+
+    if reason_counts:
+
+        for reason, count in reason_counts.most_common(6):
+
+            lines.append(f"- {_blocked_reason_ko(reason)}: {count}개")
+
+    else:
+
+        lines.append("- 기록된 차단 사유 없음")
+
+
+
+    def sort_key(r):
+
+        try:
+
+            score = float(r.get("score") or 0)
+
+        except Exception:
+
+            score = 0
+
+        try:
+
+            rr = float(r.get("estimated_rr") or 0)
+
+        except Exception:
+
+            rr = 0
+
+        return (score, rr)
+
+
+
+    top = sorted(all_results, key=sort_key, reverse=True)[:5]
+
+
+
+    if top:
+
+        lines.append("")
+
+        lines.append("상위 관찰 후보:")
+
+        for r in top:
+
+            symbol = r.get("symbol", "?")
+
+            direction = r.get("direction", "?")
+
+            grade = r.get("grade", "?")
+
+            score = r.get("score", "?")
+
+            try:
+
+                rr = f"{float(r.get('estimated_rr') or 0):.2f}"
+
+            except Exception:
+
+                rr = "?"
+
+            reason = _blocked_reason_ko(get_candidate_blocked_reason(r))
+
+            lines.append(f"- {symbol}: {direction}/{grade}, 점수 {score}, RR {rr}, 사유={reason}")
+
+
+
+    lines.append("")
+
+    lines.append("해석:")
+
+    lines.append("지금은 억지 진입 금지 구간입니다.")
+
+    lines.append("기다리는 것이 전략입니다.")
+
+
+
+    return "\n".join(lines)
+
+
+
+
 def fetch_binance_klines(symbol):
 
     url = "https://fapi.binance.com/fapi/v1/klines"
@@ -797,7 +1033,11 @@ def score_candidate(symbol, rows, market_type):
 
 
 
-    if direction != "WAIT":
+    if direction == "WAIT":
+
+        reasons.append("no_clear_direction")
+
+    else:
 
         score += 8
 
@@ -805,23 +1045,23 @@ def score_candidate(symbol, rows, market_type):
 
 
 
-    if rr >= 2.0:
+        if rr >= 2.0:
 
-        score += 12
+            score += 12
 
-        reasons.append(f"estimated_rr {rr:.2f}")
+            reasons.append(f"estimated_rr {rr:.2f}")
 
-    elif rr >= MIN_ESTIMATED_RR:
+        elif rr >= MIN_ESTIMATED_RR:
 
-        score += 7
+            score += 7
 
-        reasons.append(f"estimated_rr {rr:.2f}")
+            reasons.append(f"estimated_rr {rr:.2f}")
 
-    else:
+        else:
 
-        score -= 12
+            score -= 12
 
-        reasons.append(f"low_estimated_rr {rr:.2f}")
+            reasons.append(f"low_estimated_rr {rr:.2f}")
 
 
 
@@ -1069,21 +1309,37 @@ def get_candidate_blocked_reason(result):
 
 
 
+    direction = result.get("direction")
+
+    if direction == "WAIT":
+
+        return "NO_CLEAR_DIRECTION"
+
+
+
+    rr_raw = result.get("estimated_rr")
+
+    if rr_raw is None or rr_raw == "":
+
+        return "RR_UNAVAILABLE"
+
+
+
     try:
 
-        if float(result.get("estimated_rr") or 0) < MIN_ESTIMATED_RR:
+        rr = float(rr_raw)
+
+        if rr <= 0:
+
+            return "RR_UNAVAILABLE"
+
+        if rr < MIN_ESTIMATED_RR:
 
             return "LOW_ESTIMATED_RR"
 
     except Exception:
 
-        pass
-
-
-
-    if result.get("direction") == "WAIT":
-
-        return "NO_CLEAR_DIRECTION"
+        return "RR_UNAVAILABLE"
 
 
 
@@ -1346,12 +1602,22 @@ def main():
 
         write_log("NO_AI_CANDIDATE " + compact(summary))
 
+        alert_sent = False
+        if should_send_no_candidate_status():
+            message = format_no_candidate_status_ko(all_results, [], [], [])
+            ok = send_telegram(message)
+            mark_no_candidate_status_attempt(ok)
+            alert_sent = bool(ok)
+            write_log("NO_CANDIDATE_STATUS_ATTEMPT " + compact({
+                "telegram_ok": bool(ok),
+                "checked": len(all_results),
+                "candidates": 0,
+                "selected": 0,
+                "source": "early_no_candidate_return",
+            }))
 
-
-        log_candidate_batch(all_results, candidates=[], selected=[], alert_sent=False)
-
+        log_candidate_batch(all_results, candidates=[], selected=[], alert_sent=alert_sent)
         write_log("SCAN_DONE")
-
         return
 
 
@@ -1482,17 +1748,45 @@ def main():
 
     # Optional light status notice.
 
-    # To avoid duplicate Telegram messages, this is off by default.
+    # AI request notice is off by default.
 
-    # Enable by setting WATCH_SEND_AI_REQUEST_NOTICE=1 in .env.
+    # No-candidate Korean status notice is on by default but rate-limited.
+
+
 
     alert_sent = False
 
+
+
     if os.getenv("WATCH_SEND_AI_REQUEST_NOTICE", "0") == "1" and selected:
 
-        send_telegram(format_candidate_summary(candidates, selected, skipped_cooldown))
+        ok = send_telegram(format_candidate_summary(candidates, selected, skipped_cooldown))
 
-        alert_sent = True
+        alert_sent = bool(ok)
+
+
+
+    elif not selected and should_send_no_candidate_status():
+
+        message = format_no_candidate_status_ko(all_results, candidates, selected, skipped_cooldown)
+
+        ok = send_telegram(message)
+
+        mark_no_candidate_status_attempt(ok)
+
+        alert_sent = bool(ok)
+
+        write_log("NO_CANDIDATE_STATUS_ATTEMPT " + compact({
+
+            "telegram_ok": bool(ok),
+
+            "checked": len(all_results),
+
+            "candidates": len(candidates),
+
+            "selected": len(selected),
+
+        }))
 
 
 
