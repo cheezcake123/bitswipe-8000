@@ -69,13 +69,13 @@ BINANCE_SYMBOLS = [
 
     "ETHUSDT",
 
+    "BNBUSDT",
+
     "SOLUSDT",
 
     "XRPUSDT",
 
     "DOGEUSDT",
-
-    "BNBUSDT",
 
     "ADAUSDT",
 
@@ -87,17 +87,89 @@ BINANCE_SYMBOLS = [
 
     "ZECUSDT",
 
+    "LTCUSDT",
+
+    "BCHUSDT",
+
+    "DOTUSDT",
+
+    "TRXUSDT",
+
+    "NEARUSDT",
+
+    "APTUSDT",
+
+    "ARBUSDT",
+
+    "OPUSDT",
+
+    "SUIUSDT",
+
+    "INJUSDT",
+
+    "SEIUSDT",
+
+    "FILUSDT",
+
+    "ATOMUSDT",
+
+    "ETCUSDT",
+
+    "UNIUSDT",
+
+    "AAVEUSDT",
+
+    "FETUSDT",
+
+    "RENDERUSDT",
+
+    "TIAUSDT",
+
+    "JUPUSDT",
+
+    "PYTHUSDT",
+
+    "ORDIUSDT",
+
+    "PEOPLEUSDT",
+
+    "ENAUSDT",
+
+    "PENDLEUSDT",
+
+    "ONDOUSDT",
+
+    "TAOUSDT",
+
+    "STXUSDT",
+
+    "RUNEUSDT",
+
+    "GALAUSDT",
+
+    "SANDUSDT",
+
+    "MANAUSDT",
+
+    "LDOUSDT",
+
+    "CRVUSDT",
+
+    "DYDXUSDT",
+
+    "APEUSDT",
+
+    "AXSUSDT",
+
+    "IMXUSDT",
+
+    "HBARUSDT",
+
 ]
 
 
 
 ETF_SYMBOLS = [
-
-    "SOXL",
-
-    "QQQ",
-
-    "EWY",
 
 ]
 
