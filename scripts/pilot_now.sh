@@ -69,15 +69,25 @@ echo ""
 
 
 
-echo "===== 6-1) Prediction Rule Recommender ====="
+echo "===== 7) Prediction Rule Recommender ====="
 
 python3 scripts/prediction_rule_recommender.py || true
 
 echo ""
 
-echo "===== 7) 최신 자동 루프 로그 ====="
 
-grep -E "SCAN_DONE|PREDICTION_STORE|PREDICTION_EVAL|PREDICTION_BACKFILL|PILOT_SCAN|PILOT_NOTIFY|PILOT_TELEGRAM|NO_CANDIDATE_STATUS" logs/watchlist_scan.log | tail -n 60 || true
+
+echo "===== 8) 엄격 파일럿 정책 ====="
+
+python3 scripts/pilot_policy_notify.py --dry-run || true
+
+echo ""
+
+
+
+echo "===== 9) 최신 자동 루프 로그 ====="
+
+grep -E "SCAN_DONE|PREDICTION_STORE|PREDICTION_EVAL|PREDICTION_BACKFILL|POLICY_SCAN|POLICY_NOTIFY|POLICY_TELEGRAM|PILOT_SCAN|PILOT_NOTIFY|NO_CANDIDATE_STATUS" logs/watchlist_scan.log | tail -n 80 || true
 
 echo ""
 
@@ -87,9 +97,9 @@ echo "============================================================"
 
 echo "운영 원칙:"
 
-echo "- PILOT_ELIGIBLE 없으면 매매 금지"
+echo "- PILOT_ELIGIBLE 또는 PILOT_ELIGIBLE_STRICT 없으면 매매 금지"
 
-echo "- PILOT_ELIGIBLE 있어도 자동진입 금지"
+echo "- 후보가 있어도 자동진입 금지"
 
 echo "- 초소액 수동 검토만 가능"
 
