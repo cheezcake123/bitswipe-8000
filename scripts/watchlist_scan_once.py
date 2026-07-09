@@ -285,7 +285,29 @@ def send_telegram(text):
 
         )
 
-        write_log(f"TELEGRAM_RESULT status={r.status_code} body={r.text[:500]}")
+        try:
+
+            payload = r.json()
+
+            result = payload.get("result") or {}
+
+            safe_log = {
+
+                "status": r.status_code,
+
+                "ok": bool(payload.get("ok")),
+
+                "message_id": result.get("message_id"),
+
+                "description": payload.get("description"),
+
+            }
+
+            write_log("TELEGRAM_RESULT " + compact(safe_log))
+
+        except Exception:
+
+            write_log(f"TELEGRAM_RESULT status={r.status_code} body_redacted=1")
 
         return r.status_code == 200
 
