@@ -15,6 +15,8 @@ from pathlib import Path
 
 import requests
 
+from position_size_calculator import calculate
+
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -350,6 +352,162 @@ def candle_summary(record):
             f"- 종가: {format_price(candle.get('close'))}"
 
         )
+
+
+
+    return lines
+
+
+
+
+
+def risk_sizing_lines(record):
+
+    balance_text = os.environ.get(
+
+        "BITSWIPE_BALANCE_USDT",
+
+        "",
+
+    ).strip()
+
+
+
+    if not balance_text:
+
+        return [
+
+            "",
+
+            "포지션 크기:",
+
+            "- 계좌 잔액 미설정으로 수량 계산 생략",
+
+        ]
+
+
+
+    risk_mode = os.environ.get(
+
+        "BITSWIPE_RISK_MODE",
+
+        "PILOT",
+
+    ).strip().upper()
+
+
+
+    leverage_text = os.environ.get(
+
+        "BITSWIPE_LEVERAGE",
+
+        "2",
+
+    ).strip()
+
+
+
+    direction = str(
+
+        record.get("direction") or ""
+
+    ).upper()
+
+
+
+    if direction == "SHORT":
+
+        sizing_entry = number(
+
+            record.get("entry_zone_low")
+
+        )
+
+    else:
+
+        sizing_entry = number(
+
+            record.get("entry_zone_high")
+
+        )
+
+
+
+    try:
+
+        result = calculate(
+
+            balance=float(balance_text),
+
+            entry=sizing_entry,
+
+            stop=number(record.get("virtual_stop")),
+
+            direction=direction,
+
+            risk_mode=risk_mode,
+
+            leverage=float(leverage_text),
+
+        )
+
+    except Exception as exc:
+
+        return [
+
+            "",
+
+            "포지션 크기:",
+
+            f"- 계산 실패: {type(exc).__name__}",
+
+            "- 실제 주문 전 수동 재계산 필요",
+
+        ]
+
+
+
+    lines = [
+
+        "",
+
+        "포지션 크기 계산:",
+
+        f"- 위험 모드: {risk_mode} ({result['risk_pct']:.2f}%)",
+
+        f"- 보수적 계산 진입가: {format_price(sizing_entry)}",
+
+        f"- 최대 허용 손실: {result['risk_budget']:,.2f} USDT",
+
+        f"- 권장 명목금액: {result['final_notional']:,.2f} USDT",
+
+        f"- 권장 수량: {result['quantity']:,.8f}",
+
+        f"- 필요 증거금: {result['margin']:,.2f} USDT",
+
+        f"- 예상 총손실: {result['estimated_loss']:,.2f} USDT",
+
+    ]
+
+
+
+    if result["capped"]:
+
+        lines.append(
+
+            "- 증거금 사용 상한으로 포지션이 축소됨"
+
+        )
+
+
+
+    lines.extend([
+
+        "- 실제 체결가가 달라지면 반드시 다시 계산",
+
+        "- 표시 수량보다 크게 진입 금지",
+
+    ])
 
 
 
