@@ -75,6 +75,12 @@ python3 scripts/prediction_scoreboard_v2.py || true
 
 echo ""
 
+echo "===== 6-2) Trade Path Scoreboard ====="
+
+python3 scripts/trade_path_scoreboard.py || true
+
+echo ""
+
 echo "===== 7) Prediction Rule Recommender ====="
 
 python3 scripts/prediction_rule_recommender.py || true
