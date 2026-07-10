@@ -471,9 +471,7 @@ def log_summary():
 
             and ts >= cutoff
 
-            and "POLICY_NOTIFY_ATTEMPT" in line
-
-            and '"telegram_ok":true' in line.replace(" ", "")
+            and "SCENARIO_NOTIFY_SUCCESS" in line
 
         ):
 
