@@ -43,7 +43,7 @@ WATCH_LOG = ROOT / "logs/watchlist_scan.log"
 
 
 
-DEDUP_MINUTES = 30
+DEDUP_MINUTES = 60
 
 STATE_RETENTION_HOURS = 48
 
@@ -285,21 +285,11 @@ def save_state(state):
 
 def candidate_key(row):
 
-    timestamp = row["ts"].astimezone(
-
-        timezone.utc
-
-    ).replace(microsecond=0).isoformat()
-
-
-
     return "|".join([
 
         row["symbol"],
 
         row["direction"],
-
-        timestamp,
 
     ])
 
