@@ -146,6 +146,7 @@ def load_rows(limit=10000):
             r["_support"] = fnum(val(r, "support", default=0))
 
             r["_resistance"] = fnum(val(r, "resistance", default=0))
+            r["_atr_pct"] = fnum(val(r, "atr_pct", default=0))
 
             r["_blocked"] = val(r, "blocked_reason", "block_reason", "reason", default="UNKNOWN")
 
@@ -289,13 +290,141 @@ def mark_store(r, cls, state):
 
 
 
+def virtual_trade_plan(direction, entry, support, resistance, atr_pct):
+
+    entry = fnum(entry)
+
+    support = fnum(support)
+
+    resistance = fnum(resistance)
+
+    atr_pct = fnum(atr_pct)
+
+
+
+    if entry <= 0:
+
+        return None
+
+
+
+    atr_abs = entry * max(atr_pct, 0.25) / 100.0
+
+
+
+    if direction == "LONG":
+
+        stop = min(
+
+            support * 0.996,
+
+            entry - atr_abs * 0.8,
+
+        )
+
+        target = max(
+
+            resistance,
+
+            entry + atr_abs * 2.0,
+
+        )
+
+        risk = entry - stop
+
+        reward = target - entry
+
+
+
+    elif direction == "SHORT":
+
+        stop = max(
+
+            resistance * 1.004,
+
+            entry + atr_abs * 0.8,
+
+        )
+
+        target = min(
+
+            support,
+
+            entry - atr_abs * 2.0,
+
+        )
+
+        risk = stop - entry
+
+        reward = entry - target
+
+
+
+    else:
+
+        return None
+
+
+
+    if risk <= 0 or reward <= 0:
+
+        return None
+
+
+
+    return {
+
+        "virtual_stop": stop,
+
+        "virtual_target": target,
+
+        "risk_pct": risk / entry * 100.0,
+
+        "reward_pct": reward / entry * 100.0,
+
+        "planned_rr": reward / risk,
+
+    }
+
+
+
+
+
 def make_prediction(r, cls):
 
     created_at = r["_ts"].isoformat()
 
-    pid = f"{created_at}|{r['_symbol']}|{r['_direction']}|{round(r['_last'], 8)}|{cls}"
 
-    return {
+
+    pid = (
+
+        f"{created_at}|{r['_symbol']}|"
+
+        f"{r['_direction']}|"
+
+        f"{round(r['_last'], 8)}|{cls}"
+
+    )
+
+
+
+    plan = virtual_trade_plan(
+
+        direction=r["_direction"],
+
+        entry=r["_last"],
+
+        support=r["_support"],
+
+        resistance=r["_resistance"],
+
+        atr_pct=r["_atr_pct"],
+
+    )
+
+
+
+    result = {
 
         "prediction_id": pid,
 
@@ -321,6 +450,22 @@ def make_prediction(r, cls):
 
         "resistance": r["_resistance"],
 
+        "atr_pct": r["_atr_pct"],
+
+        "plan_version": "scanner_rr_v1",
+
+        "virtual_stop": None,
+
+        "virtual_target": None,
+
+        "risk_pct": None,
+
+        "reward_pct": None,
+
+        "planned_rr": None,
+
+        "rr_delta": None,
+
         "blocked_reason": r["_blocked"],
 
         "reason_text": reason_text(r),
@@ -329,6 +474,17 @@ def make_prediction(r, cls):
 
     }
 
+
+
+    if plan:
+
+        result.update(plan)
+
+        result["rr_delta"] = plan["planned_rr"] - r["_rr"]
+
+
+
+    return result
 
 
 
