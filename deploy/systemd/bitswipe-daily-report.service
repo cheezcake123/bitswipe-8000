@@ -1,0 +1,21 @@
+
+[Unit]
+
+Description=Send BitSwipe Korean daily operations report
+
+Wants=network-online.target
+
+After=network-online.target
+
+
+
+[Service]
+
+Type=oneshot
+
+User=ubuntu
+
+WorkingDirectory=/opt/bitswipe
+
+ExecStart=/opt/bitswipe/.venv/bin/python /opt/bitswipe/scripts/daily_forward_notify.py
+

@@ -1,0 +1,23 @@
+
+[Unit]
+
+Description=Send BitSwipe daily report at 08:00 KST
+
+
+
+[Timer]
+
+OnCalendar=*-*-* 23:00:00 UTC
+
+Persistent=true
+
+AccuracySec=1min
+
+Unit=bitswipe-daily-report.service
+
+
+
+[Install]
+
+WantedBy=timers.target
+
