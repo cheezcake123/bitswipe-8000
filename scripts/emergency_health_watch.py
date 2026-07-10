@@ -36,6 +36,14 @@ ROOT = Path(__file__).resolve().parents[1]
 WATCH_LOG = ROOT / "logs/watchlist_scan.log"
 
 STATE_PATH = ROOT / "logs/emergency_health_watch_state.json"
+ACTIVE_SCENARIOS_PATH = ROOT / "logs/active_scenarios.json"
+
+
+
+SCENARIO_STALL_GRACE_MINUTES = 30
+
+PENDING_NOTIFY_STALL_MINUTES = 30
+
 
 
 
@@ -447,6 +455,208 @@ def available_memory_mb():
 
 
 
+def scenario_stall_summary(current_time):
+
+    result = {
+
+        "watching_stalled": 0,
+
+        "pending_stalled": 0,
+
+        "details": [],
+
+    }
+
+
+
+    if not ACTIVE_SCENARIOS_PATH.exists():
+
+        return result
+
+
+
+    try:
+
+        state = json.loads(
+
+            ACTIVE_SCENARIOS_PATH.read_text(
+
+                encoding="utf-8"
+
+            )
+
+        )
+
+    except Exception as exc:
+
+        result["details"].append(
+
+            f"active scenario state read error="
+
+            f"{type(exc).__name__}"
+
+        )
+
+        return result
+
+
+
+    active = state.get("active") or {}
+
+
+
+    if not isinstance(active, dict):
+
+        result["details"].append(
+
+            "active scenario state malformed"
+
+        )
+
+        return result
+
+
+
+    def parse_timestamp(value):
+
+        try:
+
+            timestamp = datetime.fromisoformat(
+
+                str(value).replace("Z", "+00:00")
+
+            )
+
+
+
+            if timestamp.tzinfo is None:
+
+                timestamp = timestamp.replace(
+
+                    tzinfo=timezone.utc
+
+                )
+
+
+
+            return timestamp.astimezone(
+
+                timezone.utc
+
+            )
+
+
+
+        except Exception:
+
+            return None
+
+
+
+    for key, record in active.items():
+
+        if not isinstance(record, dict):
+
+            continue
+
+
+
+        status = record.get("status")
+
+        symbol = record.get("symbol") or key
+
+        direction = record.get("direction") or "UNKNOWN"
+
+
+
+        if status == "WATCHING":
+
+            expires_at = parse_timestamp(
+
+                record.get("expires_at")
+
+            )
+
+
+
+            if expires_at is None:
+
+                continue
+
+
+
+            delay_minutes = (
+
+                current_time - expires_at
+
+            ).total_seconds() / 60.0
+
+
+
+            if delay_minutes >= SCENARIO_STALL_GRACE_MINUTES:
+
+                result["watching_stalled"] += 1
+
+                result["details"].append(
+
+                    f"{symbol} {direction} WATCHING "
+
+                    f"만료 후 {delay_minutes:.0f}분"
+
+                )
+
+
+
+        elif status == "PENDING_NOTIFY":
+
+            pending_since = parse_timestamp(
+
+                record.get("resolved_at")
+
+                or record.get("last_checked_at")
+
+                or record.get("registered_at")
+
+                or record.get("sent_at")
+
+            )
+
+
+
+            if pending_since is None:
+
+                continue
+
+
+
+            delay_minutes = (
+
+                current_time - pending_since
+
+            ).total_seconds() / 60.0
+
+
+
+            if delay_minutes >= PENDING_NOTIFY_STALL_MINUTES:
+
+                result["pending_stalled"] += 1
+
+                result["details"].append(
+
+                    f"{symbol} {direction} 후속 알림 "
+
+                    f"{delay_minutes:.0f}분 대기"
+
+                )
+
+
+
+    return result
+
+
+
+
+
 def collect_health():
 
     now = now_utc()
@@ -614,6 +824,44 @@ def collect_health():
             f"{logs['trade_path_failures']}건"
 
         )
+
+
+
+    scenario_stalls = scenario_stall_summary(now)
+
+
+
+    if scenario_stalls["watching_stalled"] > 0:
+
+        count = scenario_stalls["watching_stalled"]
+
+
+
+        issues.append(
+
+            f"만료 후 정리되지 않은 시나리오 {count}건"
+
+        )
+
+
+
+    if scenario_stalls["pending_stalled"] > 0:
+
+        count = scenario_stalls["pending_stalled"]
+
+
+
+        issues.append(
+
+            f"후속 알림 전송 정체 {count}건"
+
+        )
+
+
+
+    for detail in scenario_stalls["details"][:5]:
+
+        details.append(detail)
 
 
 
