@@ -509,6 +509,190 @@ def evaluate(record, candles, current_time=None):
 
 
 
+def evaluate_since_sent(record, candles, current_time=None):
+
+    current_time = current_time or now_utc()
+
+
+
+    sent_at = parse_ts(
+
+        record.get("sent_at")
+
+        or record.get("registered_at")
+
+        or record.get("candidate_at")
+
+    )
+
+
+
+    expires_at = parse_ts(
+
+        record.get("expires_at")
+
+    )
+
+
+
+    valid_candles = []
+
+
+
+    for candle in sorted(
+
+        candles,
+
+        key=lambda item: number(
+
+            item.get("close_time")
+
+        ),
+
+    ):
+
+        close_time_ms = int(
+
+            number(candle.get("close_time"))
+
+        )
+
+
+
+        if close_time_ms <= 0:
+
+            continue
+
+
+
+        close_time = datetime.fromtimestamp(
+
+            close_time_ms / 1000,
+
+            tz=timezone.utc,
+
+        )
+
+
+
+        if (
+
+            sent_at is not None
+
+            and close_time <= sent_at
+
+        ):
+
+            continue
+
+
+
+        if (
+
+            expires_at is not None
+
+            and close_time >= expires_at
+
+        ):
+
+            continue
+
+
+
+        valid_candles.append(
+
+            (close_time, candle)
+
+        )
+
+
+
+    for close_time, candle in valid_candles:
+
+        result = evaluate(
+
+            record,
+
+            [candle],
+
+            current_time=close_time,
+
+        )
+
+
+
+        if result["status"] in (
+
+            "CONFIRMED",
+
+            "INVALIDATED",
+
+        ):
+
+            return result
+
+
+
+    if (
+
+        expires_at is not None
+
+        and current_time >= expires_at
+
+    ):
+
+        return {
+
+            "status": "EXPIRED",
+
+            "reason": "45분 유효기간 종료",
+
+            "candle": None,
+
+        }
+
+
+
+    if valid_candles:
+
+        return {
+
+            "status": "WATCHING",
+
+            "reason": (
+
+                "시나리오 생성 이후 "
+
+                "확인 또는 무효화 조건 미충족"
+
+            ),
+
+            "candle": valid_candles[-1][1],
+
+        }
+
+
+
+    return {
+
+        "status": "WATCHING",
+
+        "reason": (
+
+            "시나리오 생성 이후 "
+
+            "완료된 15분봉 없음"
+
+        ),
+
+        "candle": None,
+
+    }
+
+
+
+
+
 def demo_record():
 
     current_time = now_utc()
@@ -787,13 +971,7 @@ def main():
 
 
 
-            result = evaluate(
-
-                record,
-
-                candles,
-
-            )
+            result = evaluate_since_sent(record, candles)
 
 
 
