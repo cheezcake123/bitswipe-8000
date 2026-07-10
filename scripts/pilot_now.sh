@@ -81,6 +81,12 @@ python3 scripts/trade_path_scoreboard.py || true
 
 echo ""
 
+echo "===== 6-3A) Experiment Integrity Guard ====="
+
+python3 scripts/experiment_integrity_guard.py || true
+
+echo ""
+
 echo "===== 6-3) Forward Validation V1 ====="
 
 python3 scripts/forward_validation_scoreboard.py || true
