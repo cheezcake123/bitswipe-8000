@@ -633,6 +633,14 @@ def confirmed_message(record):
 
 
 
+    lines.extend(
+
+        risk_sizing_lines(record)
+
+    )
+
+
+
     candle_lines = candle_summary(record)
 
 
