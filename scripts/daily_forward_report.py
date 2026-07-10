@@ -28,6 +28,7 @@ PREDICTIONS = ROOT / "logs/prediction_watch.jsonl"
 PATH_OUTCOMES = ROOT / "logs/trade_path_outcomes.jsonl"
 
 WATCH_LOG = ROOT / "logs/watchlist_scan.log"
+ACTIVE_SCENARIOS = ROOT / "logs/active_scenarios.json"
 
 
 
@@ -525,6 +526,158 @@ def log_summary():
 
 
 
+def scenario_summary():
+
+    result = {
+
+        "watching": 0,
+
+        "pending_notify": 0,
+
+        "confirmed_24h": 0,
+
+        "invalidated_24h": 0,
+
+        "expired_24h": 0,
+
+        "followup_failures_24h": 0,
+
+    }
+
+
+
+    now = datetime.now(timezone.utc)
+
+    cutoff = now - timedelta(hours=24)
+
+
+
+    try:
+
+        state = load_json(ACTIVE_SCENARIOS)
+
+    except Exception:
+
+        state = {}
+
+
+
+    active = state.get("active") or {}
+
+
+
+    if isinstance(active, dict):
+
+        for record in active.values():
+
+            if not isinstance(record, dict):
+
+                continue
+
+
+
+            status = record.get("status")
+
+
+
+            if status == "WATCHING":
+
+                result["watching"] += 1
+
+
+
+            elif status == "PENDING_NOTIFY":
+
+                result["pending_notify"] += 1
+
+
+
+    history = state.get("history") or []
+
+
+
+    if isinstance(history, list):
+
+        for record in history:
+
+            if not isinstance(record, dict):
+
+                continue
+
+
+
+            timestamp = parse_ts(
+
+                record.get("followup_sent_at")
+
+                or record.get("resolved_at")
+
+            )
+
+
+
+            if not timestamp or timestamp < cutoff:
+
+                continue
+
+
+
+            status = record.get("status")
+
+
+
+            if status == "CONFIRMED":
+
+                result["confirmed_24h"] += 1
+
+
+
+            elif status == "INVALIDATED":
+
+                result["invalidated_24h"] += 1
+
+
+
+            elif status == "EXPIRED":
+
+                result["expired_24h"] += 1
+
+
+
+    if WATCH_LOG.exists():
+
+        for line in WATCH_LOG.read_text(
+
+            encoding="utf-8",
+
+            errors="ignore",
+
+        ).splitlines():
+
+            timestamp = parse_log_time(line)
+
+
+
+            if (
+
+                timestamp
+
+                and timestamp >= cutoff
+
+                and "SCENARIO_FOLLOWUP_FAILED" in line
+
+            ):
+
+                result["followup_failures_24h"] += 1
+
+
+
+    return result
+
+
+
+
+
 def format_pf(value):
 
     if math.isinf(value):
@@ -698,6 +851,7 @@ def main():
 
 
     logs = log_summary()
+    scenarios = scenario_summary()
 
 
 
@@ -768,6 +922,18 @@ def main():
             f"24시간 경로 평가 실패 "
 
             f"{logs['path_failures_24h']}건"
+
+        )
+
+
+
+    if scenarios["followup_failures_24h"] > 0:
+
+        warnings.append(
+
+            f"24시간 후속 알림 실패 "
+
+            f"{scenarios['followup_failures_24h']}건"
 
         )
 
@@ -876,6 +1042,60 @@ def main():
         f"- 경로 평가 실패: "
 
         f"{logs['path_failures_24h']}건"
+
+    )
+
+
+
+    print("")
+
+    print("시나리오 추적:")
+
+    print(
+
+        f"- 현재 WATCHING: "
+
+        f"{scenarios['watching']}건"
+
+    )
+
+    print(
+
+        f"- 후속 알림 대기: "
+
+        f"{scenarios['pending_notify']}건"
+
+    )
+
+    print(
+
+        f"- 24시간 진입조건 확인: "
+
+        f"{scenarios['confirmed_24h']}건"
+
+    )
+
+    print(
+
+        f"- 24시간 관점 무효화: "
+
+        f"{scenarios['invalidated_24h']}건"
+
+    )
+
+    print(
+
+        f"- 24시간 시간 만료: "
+
+        f"{scenarios['expired_24h']}건"
+
+    )
+
+    print(
+
+        f"- 24시간 후속 알림 실패: "
+
+        f"{scenarios['followup_failures_24h']}건"
 
     )
 
