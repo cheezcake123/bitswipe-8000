@@ -879,7 +879,9 @@ def main():
 
         if not args.dry_run:
 
-            record["status"] = status
+            record["status"] = "PENDING_NOTIFY"
+
+            record["pending_resolution"] = status
 
             record["resolution"] = (
 
@@ -901,9 +903,7 @@ def main():
 
 
 
-            history.append(record)
-
-            resolved_keys.append(key)
+            record["followup_sent"] = False
 
 
 
