@@ -1,0 +1,23 @@
+
+[Unit]
+
+Description=Check BitSwipe health every 10 minutes
+
+
+
+[Timer]
+
+OnBootSec=2min
+
+OnUnitActiveSec=10min
+
+AccuracySec=1min
+
+Unit=bitswipe-health-watch.service
+
+
+
+[Install]
+
+WantedBy=timers.target
+

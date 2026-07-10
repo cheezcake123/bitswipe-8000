@@ -1,0 +1,21 @@
+
+[Unit]
+
+Description=BitSwipe emergency health watch
+
+Wants=network-online.target
+
+After=network-online.target
+
+
+
+[Service]
+
+Type=oneshot
+
+User=ubuntu
+
+WorkingDirectory=/opt/bitswipe
+
+ExecStart=/opt/bitswipe/.venv/bin/python /opt/bitswipe/scripts/emergency_health_watch.py
+
