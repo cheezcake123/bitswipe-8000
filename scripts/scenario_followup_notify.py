@@ -16,6 +16,7 @@ from pathlib import Path
 import requests
 
 from position_size_calculator import calculate
+from risk_mode_guard import effective_risk_mode
 
 
 
@@ -387,13 +388,21 @@ def risk_sizing_lines(record):
 
 
 
-    risk_mode = os.environ.get(
+    requested_risk_mode = os.environ.get(
 
         "BITSWIPE_RISK_MODE",
 
         "PILOT",
 
     ).strip().upper()
+
+
+
+    risk_mode = effective_risk_mode(
+
+        requested_risk_mode
+
+    )
 
 
 
@@ -488,6 +497,20 @@ def risk_sizing_lines(record):
         f"- 예상 총손실: {result['estimated_loss']:,.2f} USDT",
 
     ]
+
+
+
+    if requested_risk_mode != risk_mode:
+
+        lines.insert(
+
+            3,
+
+            f"- 요청 모드 {requested_risk_mode}는 "
+
+            f"검증 부족으로 {risk_mode} 적용",
+
+        )
 
 
 
