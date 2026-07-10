@@ -1,3 +1,9 @@
+echo "===== 0) 일일 운영 보고서 ====="
+
+python3 scripts/daily_forward_report.py || true
+
+echo ""
+
 
 #!/usr/bin/env bash
 
