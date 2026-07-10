@@ -69,6 +69,12 @@ echo ""
 
 
 
+echo "===== 6-1) Prediction Scoreboard V2 ====="
+
+python3 scripts/prediction_scoreboard_v2.py || true
+
+echo ""
+
 echo "===== 7) Prediction Rule Recommender ====="
 
 python3 scripts/prediction_rule_recommender.py || true
