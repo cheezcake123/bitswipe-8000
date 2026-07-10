@@ -1,0 +1,32 @@
+{
+  "experiment_id": "bitswipe_forward_v1",
+  "started_at": "2026-07-10T05:00:56.631346+00:00",
+  "baseline_commit": "a820ca54c1dac2fce4cceac137fa1b135892bdcb",
+  "policy": {
+    "market_type": "BINANCE",
+    "direction": "SHORT",
+    "minimum_rr": 2.0,
+    "minimum_score": 30,
+    "maximum_score": 59,
+    "horizon_min": 240,
+    "path_interval": "1m",
+    "plan_version": "scanner_rr_v1"
+  },
+  "cost_model": {
+    "round_trip_fee_bps": 10.0,
+    "round_trip_slippage_bps": 4.0,
+    "total_cost_bps": 14.0
+  },
+  "promotion_requirements": {
+    "minimum_strict_forward_samples": 30,
+    "minimum_average_net_r": 0.0,
+    "minimum_profit_factor": 1.2,
+    "maximum_drawdown_r": 5.0
+  },
+  "rules": [
+    "전진 표본 30건 전까지 전략 조건 변경 금지",
+    "버그 수정 외 정책 변경 시 새 experiment_id 사용",
+    "자동매매 금지",
+    "초소액 수동 검토만 허용"
+  ]
+}
