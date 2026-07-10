@@ -347,34 +347,105 @@ def build_message(items):
 
     lines = [
 
-        "[BitSwipe 엄격 파일럿 후보]",
+        "[BitSwipe 엄격 검토 후보]",
 
         "",
 
-        "자동 진입 금지. 초소액 수동 검토만 가능.",
+        "⚠️ 이것은 진입 허가가 아닙니다.",
 
-        "정책: BINANCE + SHORT + RR 2.0+ + 점수 30~59",
+        "즉시 추격 진입 금지. 저항 반응과 재테스트를 확인한 뒤 수동 검토하세요.",
 
-        "1회 손실 허용: 계좌 0.25% 이하 / 레버리지 1~2배 이하",
+        "",
+
+        "기본 조건: BINANCE + SHORT + RR 2.0+ + 점수 30~59",
+
+        "손실 한도: 계좌 0.25% 이하 / 레버리지 1~2배 이하",
 
         "",
 
     ]
 
+
+
+    caution_symbols = {"LINKUSDT", "UNIUSDT"}
+
+
+
     for r, cls in items[:5]:
 
-        lines.append(f"- {r['symbol']} {r['direction']} / {cls}")
+        warnings = []
 
-        lines.append(f"  점수 {r['score']:.0f}, RR {r['rr']:.2f}, 가격 {r['price']}")
 
-        lines.append(f"  등급 {r['grade']}, 기존차단 {r['blocked_reason']}")
+
+        if r["symbol"] in caution_symbols:
+
+            warnings.append("과거 strict 성과 주의")
+
+
+
+        if r["score"] < 45:
+
+            warnings.append("점수 45 미만")
+
+
+
+        if r["rr"] < 2.5:
+
+            warnings.append("RR 2.5 미만")
+
+
+
+        if warnings:
+
+            verdict = "보류 우선"
+
+            warning_text = ", ".join(warnings)
+
+        else:
+
+            verdict = "조건부 수동 검토"
+
+            warning_text = "추가 경고 없음"
+
+
+
+        lines.append(f"- {r['symbol']} {r['direction']}")
+
+        lines.append(
+
+            f"  점수 {r['score']:.0f} / RR {r['rr']:.2f} / 가격 {r['price']}"
+
+        )
+
+        lines.append(f"  판정: {verdict}")
+
+        lines.append(f"  경고: {warning_text}")
+
+        lines.append(f"  기존 차단 사유: {r['blocked_reason']}")
 
         lines.append("")
 
-    lines.append("주의: 표본이 작으므로 매매 강제 아님. 차트 확인 후 보류 가능.")
+
+
+    lines.extend([
+
+        "진입 전 필수 확인:",
+
+        "1) 15분봉이 저항 아래에서 마감하는지",
+
+        "2) 반등 재테스트가 저항을 돌파하지 못하는지",
+
+        "3) 손절 가격을 먼저 정했는지",
+
+        "",
+
+        "하나라도 불분명하면 진입하지 마세요.",
+
+    ])
+
+
 
     return "\n".join(lines)
-
 
 
 
