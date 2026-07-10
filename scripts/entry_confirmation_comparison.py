@@ -187,7 +187,17 @@ def summarize(rows):
 
     results = Counter(
 
-        str(row.get("result", "UNKNOWN"))
+        str(
+
+            row.get("result")
+
+            or row.get("path_result")
+
+            or row.get("outcome")
+
+            or "UNKNOWN"
+
+        ).upper()
 
         for row in rows
 
