@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - codex/alert-pipeline-v1
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
   workflow_dispatch:
 
 permissions:
@@ -41,5 +44,6 @@ jobs:
       - name: Combined dry-run
         run: python scripts/test_detailed_trade_alert.py --side both
 
-      - name: Trade alert unit tests
-        run: python -m unittest tests.test_trade_alert -v
+      - name: Alert unit tests
+        run: |
+          python -m unittest             tests.test_trade_alert             tests.test_korean_alerts             -v
