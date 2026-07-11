@@ -1,6 +1,8 @@
 # =============================================
 # AI API 연동 - 매매 시그널 분석
 # =============================================
+from __future__ import annotations
+
 import re
 import time
 import json

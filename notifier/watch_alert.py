@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import config as runtime_config
+from notifier.korean_alerts import display_alert_value
 from notifier.telegram_notifier import send_telegram_message
 
 
@@ -134,35 +135,48 @@ def _clean_state(state: dict[str, Any]) -> dict[str, Any]:
 def _format_reasons(event: dict[str, Any]) -> str:
     reasons = event.get("reasons") or []
     if not isinstance(reasons, list) or not reasons:
-        return "N/A"
-    return ", ".join(str(item) for item in reasons[:5])
+        return "정보 없음"
+    return ", ".join(
+        display_alert_value("reason", item)
+        for item in reasons[:5]
+    )
 
 
 def format_watch_message(event: dict[str, Any]) -> str:
     symbol = str(event.get("symbol") or "UNKNOWN").upper()
-    asset_class = str(event.get("asset_class") or "unknown").upper()
+    asset_class = display_alert_value("asset_class", event.get("asset_class"))
+    event_type = display_alert_value("event_type", event.get("event_type"))
+    direction = display_alert_value("direction", event.get("direction"))
+    trend = display_alert_value("trend", event.get("trend"))
+    confirmation = display_alert_value(
+        "confirmation",
+        event.get("confirmation"),
+        fallback="캔들 종가와 리테스트 확인이 필요합니다.",
+    )
     score = event.get("score")
     min_score = event.get("min_score")
     return (
-        "BitSwipe B-grade WATCH\n"
-        "NOT ENTRY - confirmation needed\n\n"
-        f"{symbol} / {asset_class}\n"
-        f"Event: {event.get('event_type') or 'watch'}\n"
-        f"Direction: {event.get('direction') or 'two_way'}\n"
-        f"Score: {_num(score, 0)} / min {_num(min_score, 0)}\n\n"
-        f"Price: {_price(event.get('price'))}\n"
-        f"Support: {_price(event.get('support'))}\n"
-        f"Resistance: {_price(event.get('resistance'))}\n"
-        f"Distance to support: {_num(event.get('distance_support_pct'), 2)}%\n"
-        f"Distance to resistance: {_num(event.get('distance_resistance_pct'), 2)}%\n"
+        "[BitSwipe B등급 관찰 알림]\n"
+        "진입 신호 아님 (NOT ENTRY) · 추가 확인 필요 (confirmation needed)\n\n"
+        f"종목: {symbol}\n"
+        f"등급: B-grade WATCH\n"
+        f"자산군: {asset_class}\n"
+        f"관찰 이벤트: {event_type}\n"
+        f"관찰 방향: {direction}\n"
+        f"점수: {_num(score, 0)} / 기준 {_num(min_score, 0)}\n\n"
+        f"현재가: {_price(event.get('price'))}\n"
+        f"지지선: {_price(event.get('support'))}\n"
+        f"저항선: {_price(event.get('resistance'))}\n"
+        f"지지선 거리: {_num(event.get('distance_support_pct'), 2)}%\n"
+        f"저항선 거리: {_num(event.get('distance_resistance_pct'), 2)}%\n"
         f"RSI: {_num(event.get('rsi'), 1)}\n"
-        f"Trend: {event.get('trend') or 'unknown'}\n"
-        f"Volume ratio: {_num(event.get('volume_ratio'), 2)}x\n\n"
-        f"Why watching: {_format_reasons(event)}\n"
-        f"Confirmation: {event.get('confirmation') or 'Wait for confirmation. NOT ENTRY.'}\n\n"
-        "This is a watchlist heads-up only. No trade entry. Use low leverage and wait for confirmation."
+        f"추세: {trend}\n"
+        f"거래량 비율: {_num(event.get('volume_ratio'), 2)}x\n\n"
+        f"관찰 근거: {_format_reasons(event)}\n"
+        f"확인 조건: {confirmation}\n\n"
+        "이 알림은 관찰 목록 안내일 뿐 진입 신호가 아닙니다. "
+        "낮은 레버리지를 유지하고 확인 조건을 기다리세요."
     )
-
 
 def maybe_send_watch_alert(event: dict[str, Any], *, dry_run: bool = True) -> dict[str, Any]:
     symbol = str(event.get("symbol") or "UNKNOWN").upper()
