@@ -78,3 +78,8 @@ logs/
 
 tmp/
 
+
+# Backup artifacts
+*.bak
+*.bak_*
+backups/
