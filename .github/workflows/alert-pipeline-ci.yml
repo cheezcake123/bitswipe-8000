@@ -1,0 +1,45 @@
+name: Alert pipeline verification
+
+on:
+  push:
+    branches:
+      - codex/alert-pipeline-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Compile alert modules
+        run: |
+          python -m py_compile \
+            notifier/trade_alert.py \
+            notifier/telegram_notifier.py \
+            notifier/korean_alerts.py \
+            notifier/watch_alert.py \
+            scripts/test_detailed_trade_alert.py \
+            scripts/watchlist_scan_once.py
+
+      - name: LONG dry-run
+        run: python scripts/test_detailed_trade_alert.py --side long
+
+      - name: SHORT dry-run
+        run: python scripts/test_detailed_trade_alert.py --side short
+
+      - name: Combined dry-run
+        run: python scripts/test_detailed_trade_alert.py --side both
+
+      - name: Trade alert unit tests
+        run: python -m unittest tests.test_trade_alert -v
