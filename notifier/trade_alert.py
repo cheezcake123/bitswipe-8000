@@ -229,6 +229,18 @@ def normalize_trade_alert_payload(payload: Any) -> Dict[str, Any]:
     if trigger in (None, "") and responses:
         trigger = responses[0]
 
+    leverage = _positive_number(
+        guard.get("leverage"), structured_trade.get("leverage"), raw.get("leverage")
+    )
+    max_margin_percent = _nonnegative_number(
+        guard.get("max_position_percent_by_account_risk"),
+        raw.get("max_position_percent_by_account_risk"),
+    )
+    max_notional_percent = (
+        max_margin_percent * leverage
+        if max_margin_percent is not None and leverage is not None
+        else None
+    )
     verdict = _clean_text(guard.get("verdict"), fallback="", max_chars=32).upper()
     return {
         "payload_present": payload_present,
@@ -247,17 +259,13 @@ def normalize_trade_alert_payload(payload: Any) -> Dict[str, Any]:
         "stop_distance_percent": _nonnegative_number(
             guard.get("stop_distance_percent"), raw.get("stop_distance_percent")
         ),
-        "leverage": _positive_number(
-            guard.get("leverage"), structured_trade.get("leverage"), raw.get("leverage")
-        ),
+        "leverage": leverage,
         "leveraged_loss_percent_on_margin": _nonnegative_number(
             guard.get("leveraged_loss_percent_on_margin"),
             raw.get("leveraged_loss_percent_on_margin"),
         ),
-        "max_position_percent_by_account_risk": _nonnegative_number(
-            guard.get("max_position_percent_by_account_risk"),
-            raw.get("max_position_percent_by_account_risk"),
-        ),
+        "max_position_percent_by_account_risk": max_margin_percent,
+        "max_notional_percent_by_account_risk": max_notional_percent,
         "risk_percent": _nonnegative_number(guard.get("risk_percent")),
         "stop_direction_valid": _stop_direction_valid(side, entry, stop),
         "target_direction_valid": _target_direction_valid(side, entry, target),
@@ -425,10 +433,12 @@ def build_trade_alert_message(
         "위험 관리\n"
         f"손절 거리: {_num(candidate['stop_distance_percent'], 2, '%')}\n"
         f"검토 레버리지: {_num(candidate['leverage'], 1, 'x')}\n"
-        "레버리지 반영 예상 손실: "
+        "증거금 기준 손절 예상 손실률: "
         f"{_num(candidate['leveraged_loss_percent_on_margin'], 2, '%')}\n"
-        "계좌 위험 기준 최대 명목 포지션 비율: "
-        f"{_num(candidate['max_position_percent_by_account_risk'], 2, '%')}"
+        "계좌 위험 기준 최대 증거금 배분 비율: "
+        f"{_num(candidate['max_position_percent_by_account_risk'], 2, '%')}\n"
+        "레버리지 반영 최대 명목 노출 비율: "
+        f"{_num(candidate['max_notional_percent_by_account_risk'], 2, '%')}"
     )
     invalidation = (
         "시나리오 폐기 조건\n"
@@ -538,7 +548,24 @@ def get_recent_alert_logs(limit: int = 20) -> List[Dict[str, Any]]:
         return []
 
 
+def _signature_number(value: Any) -> str:
+    number = _safe_float(value)
+    return "NA" if number is None else format(number, ".10g")
+
+
 def _alert_signature(candidate: Mapping[str, Any]) -> str:
+    return "|".join(
+        [
+            str(candidate.get("symbol") or "UNKNOWN"),
+            str(candidate.get("side") or "UNKNOWN"),
+            _signature_number(candidate.get("entry_price")),
+            _signature_number(candidate.get("stop_price")),
+            _signature_number(candidate.get("target_price")),
+        ]
+    )
+
+
+def _legacy_alert_signature(candidate: Mapping[str, Any]) -> str:
     return "|".join(
         [
             str(candidate.get("symbol") or "UNKNOWN"),
@@ -651,12 +678,18 @@ def maybe_send_trade_alert(
 
     selected_sender = sender or send_telegram_message
     signature = _alert_signature(candidate)
+    legacy_signature = _legacy_alert_signature(candidate)
     duplicate = _should_suppress_duplicate(signature)
+    if not duplicate.get("suppress") and legacy_signature != signature:
+        legacy_duplicate = _should_suppress_duplicate(legacy_signature)
+        if legacy_duplicate.get("suppress"):
+            duplicate = {**legacy_duplicate, "matched_signature": legacy_signature}
     if duplicate.get("suppress"):
         result = {
             "sent": False,
             "reason": "duplicate_suppressed",
             "signature": signature,
+            "matched_signature": duplicate.get("matched_signature", signature),
             "elapsed_seconds": duplicate.get("elapsed_seconds"),
             "cooldown_seconds": duplicate.get("cooldown_seconds"),
             **base_result,
