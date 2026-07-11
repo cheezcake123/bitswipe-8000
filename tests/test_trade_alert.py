@@ -22,6 +22,8 @@ class TradeAlertPureFunctionTests(unittest.TestCase):
         self.assertIn("롱 (LONG)", message)
         self.assertIn("1차 목표가 (1R): $102.00", message)
         self.assertIn("예상 손익비: 1:2.00", message)
+        self.assertIn("최대 증거금 배분 비율: 16.67%", message)
+        self.assertIn("최대 명목 노출 비율: 50.01%", message)
 
     def test_short_message_generation(self):
         payload = build_test_payload("SHORT")
@@ -214,6 +216,27 @@ class TradeAlertPureFunctionTests(unittest.TestCase):
         )
 
         self.assertEqual(first, second)
+
+    def test_low_price_candidates_have_distinct_cooldown_signatures(self):
+        first_payload = build_test_payload("LONG")
+        second_payload = build_test_payload("LONG")
+        for payload, offset in ((first_payload, 0.0), (second_payload, 0.000001)):
+            payload["symbol"] = "DOGEUSDT"
+            payload["risk_guard"].update(
+                {
+                    "entry_price": 0.123456 + offset,
+                    "stop_price": 0.120001 + offset,
+                    "target_price": 0.130001 + offset,
+                }
+            )
+
+        first = trade_alert.normalize_trade_alert_payload(first_payload)
+        second = trade_alert.normalize_trade_alert_payload(second_payload)
+
+        self.assertNotEqual(
+            trade_alert._alert_signature(first),
+            trade_alert._alert_signature(second),
+        )
 
 
 class TradeAlertIsolationTests(unittest.TestCase):
