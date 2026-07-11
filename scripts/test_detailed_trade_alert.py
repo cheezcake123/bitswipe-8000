@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from notifier.telegram_notifier import send_telegram_message  # noqa: E402
 from notifier.trade_alert import (  # noqa: E402
     LOG_PATH,
     MIN_TRADE_ALERT_CONFIDENCE,
@@ -213,6 +214,7 @@ def _run_case(side: str, *, send: bool) -> bool:
         payload,
         dry_run=not send,
         test_mode=True,
+        sender=send_telegram_message if send else None,
     )
     state_after = _file_snapshot(STATE_PATH)
     log_after = _file_snapshot(LOG_PATH)
