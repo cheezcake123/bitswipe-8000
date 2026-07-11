@@ -105,7 +105,9 @@ data/telegram_alert_state.json
 data/telegram_alert_log.jsonl
 ~~~
 
-기본 cooldown은 3600초이며 TELEGRAM_ALERT_COOLDOWN_SECONDS로 조정할 수 있다.
+기본 cooldown은 3600초이며 TELEGRAM_ALERT_COOLDOWN_SECONDS로 조정할 수 있다. 저가 코인의 가격 정밀도를 보존하는 새 signature와 기존 2자리 signature를 함께 검사하므로 배포 직후에도 기존 cooldown이 유지된다.
+
+Risk Engine의 max_position_percent_by_account_risk는 계좌 대비 최대 증거금 배분 비율이다. 상세 알림은 이 값을 명목 포지션으로 오표기하지 않고, 레버리지를 곱한 최대 명목 노출 비율을 별도 표시한다.
 
 ## 테스트 방법
 
@@ -146,7 +148,14 @@ pytest는 production requirements에 추가하지 않는다.
 
 ## 실제 Telegram 테스트 방법
 
-실제 테스트 전송은 --send를 명시한 경우에만 수행한다.
+실제 테스트 전송은 --send를 명시한 경우에만 수행한다. 저장소 루트의 .env 또는 프로세스 환경에 다음 값이 설정돼 있어야 한다.
+
+~~~text
+TELEGRAM_BOT_TOKEN=<bot token>
+TELEGRAM_CHAT_ID=<chat id>
+~~~
+
+스크립트와 오류 메시지는 이 값을 출력하지 않는다.
 
 ~~~bash
 python scripts/test_detailed_trade_alert.py --side long --send
