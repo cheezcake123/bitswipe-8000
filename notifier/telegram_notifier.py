@@ -4,15 +4,16 @@ import json
 import os
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _load_env_file(path: str = ".env") -> Dict[str, str]:
+def _load_env_file(path: Optional[str] = None) -> Dict[str, str]:
     env: Dict[str, str] = {}
-    source = Path(path)
+    source = Path(path) if path else REPOSITORY_ROOT / ".env"
     if not source.exists():
         return env
 
