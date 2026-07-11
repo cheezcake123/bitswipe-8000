@@ -63,7 +63,9 @@ def display_alert_value(
     fallback: str = "정보 없음",
 ) -> str:
     """Translate one known display value without mutating internal enum data."""
-    raw = str(value or "").strip()
+    if value is None:
+        return fallback
+    raw = str(value).strip()
     if not raw:
         return fallback
     mapping = _DISPLAY_ENUMS.get(str(category), {})
