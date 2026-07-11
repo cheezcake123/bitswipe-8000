@@ -46,6 +46,16 @@ def _first_number(*values: Any) -> Optional[float]:
     return None
 
 
+def _positive_number(*values: Any) -> Optional[float]:
+    number = _first_number(*values)
+    return number if number is not None and number > 0 else None
+
+
+def _nonnegative_number(*values: Any) -> Optional[float]:
+    number = _first_number(*values)
+    return number if number is not None and number >= 0 else None
+
+
 def _clean_text(value: Any, fallback: str = "정보 없음", max_chars: int = 240) -> str:
     if not isinstance(value, (str, int, float)) or isinstance(value, bool):
         return fallback
@@ -120,7 +130,8 @@ def calculate_one_r_target(
     risk = abs(entry - stop)
     if risk <= 0:
         return None
-    return entry + risk if normalized_side == "LONG" else entry - risk
+    target = entry + risk if normalized_side == "LONG" else entry - risk
+    return target if target > 0 else None
 
 
 def _calculated_risk_reward(
@@ -167,7 +178,7 @@ def normalize_trade_alert_payload(payload: Any) -> Dict[str, Any]:
     side = _side(raw.get("signal"))
     guard_side = _side(guard.get("side"))
     confidence = _safe_float(raw.get("confidence"))
-    if confidence is None:
+    if confidence is None or not 0.0 <= confidence <= 100.0:
         confidence = 0.0
 
     symbol = _clean_text(
@@ -181,17 +192,17 @@ def normalize_trade_alert_payload(payload: Any) -> Dict[str, Any]:
         max_chars=80,
     )
 
-    entry = _first_number(
+    entry = _positive_number(
         guard.get("entry_price"), trade_levels.get("entry"), structured_trade.get("entry")
     )
-    stop = _first_number(
+    stop = _positive_number(
         guard.get("stop_price"), trade_levels.get("stop"), structured_trade.get("stop")
     )
-    target = _first_number(
+    target = _positive_number(
         guard.get("target_price"), trade_levels.get("target"), structured_trade.get("target")
     )
-    current_price = _first_number(raw.get("price"), entry)
-    risk_reward = _first_number(
+    current_price = _positive_number(raw.get("price"))
+    risk_reward = _positive_number(
         guard.get("risk_reward_ratio"), raw.get("risk_reward_ratio")
     )
     if risk_reward is None:
@@ -233,21 +244,21 @@ def normalize_trade_alert_payload(payload: Any) -> Dict[str, Any]:
         "target_price": target,
         "target_1r": calculate_one_r_target(side or "", entry, stop),
         "risk_reward_ratio": risk_reward,
-        "stop_distance_percent": _first_number(
+        "stop_distance_percent": _nonnegative_number(
             guard.get("stop_distance_percent"), raw.get("stop_distance_percent")
         ),
-        "leverage": _first_number(
+        "leverage": _positive_number(
             guard.get("leverage"), structured_trade.get("leverage"), raw.get("leverage")
         ),
-        "leveraged_loss_percent_on_margin": _first_number(
+        "leveraged_loss_percent_on_margin": _nonnegative_number(
             guard.get("leveraged_loss_percent_on_margin"),
             raw.get("leveraged_loss_percent_on_margin"),
         ),
-        "max_position_percent_by_account_risk": _first_number(
+        "max_position_percent_by_account_risk": _nonnegative_number(
             guard.get("max_position_percent_by_account_risk"),
             raw.get("max_position_percent_by_account_risk"),
         ),
-        "risk_percent": _first_number(guard.get("risk_percent")),
+        "risk_percent": _nonnegative_number(guard.get("risk_percent")),
         "stop_direction_valid": _stop_direction_valid(side, entry, stop),
         "target_direction_valid": _target_direction_valid(side, entry, target),
         "market_view": _clean_text(
@@ -296,6 +307,8 @@ def evaluate_trade_alert(payload: Any) -> Dict[str, Any]:
         eligible, reason = False, "risk_guard_not_pass"
     elif candidate["side"] not in ("LONG", "SHORT"):
         eligible, reason = False, "signal_not_buy_or_sell"
+    elif candidate["guard_side"] and candidate["guard_side"] != candidate["side"]:
+        eligible, reason = False, "risk_guard_side_mismatch"
     elif candidate["confidence"] < MIN_TRADE_ALERT_CONFIDENCE:
         eligible, reason = False, "confidence_too_low"
 
@@ -304,6 +317,7 @@ def evaluate_trade_alert(payload: Any) -> Dict[str, Any]:
         "reason": reason,
         "symbol": candidate["symbol"],
         "side": candidate["side"],
+        "guard_side": candidate["guard_side"],
         "confidence": candidate["confidence"],
         "risk_guard_verdict": candidate["risk_guard_verdict"],
         "stop_direction_valid": candidate["stop_direction_valid"],
@@ -327,6 +341,16 @@ def _stop_direction_text(candidate: Mapping[str, Any]) -> str:
         required = "진입가보다 낮아야" if side == "LONG" else "진입가보다 높아야"
         return f"⚠️ 가격 구조 경고: {side} 손절가는 {required} 합니다."
     return "⚠️ 가격 구조 경고: 진입가 또는 손절가가 없어 방향을 확인할 수 없습니다."
+
+
+def _guard_side_text(candidate: Mapping[str, Any]) -> str:
+    guard_side = candidate.get("guard_side")
+    side = candidate.get("side")
+    if not guard_side:
+        return "Risk Guard 검증 방향: 정보 없음"
+    if guard_side != side:
+        return f"⚠️ 방향 불일치 경고: 신호 {side} / Risk Guard {guard_side}"
+    return f"Risk Guard 검증 방향: {guard_side} (일치)"
 
 
 def _target_direction_text(candidate: Mapping[str, Any]) -> str:
@@ -394,7 +418,8 @@ def build_trade_alert_message(
         f"AI 최종 목표가: {_price(candidate['target_price'])}\n"
         f"예상 손익비: {rr_display}\n"
         f"{_stop_direction_text(candidate)}\n"
-        f"{_target_direction_text(candidate)}"
+        f"{_target_direction_text(candidate)}\n"
+        f"{_guard_side_text(candidate)}"
     )
     risk = (
         "위험 관리\n"
@@ -603,9 +628,17 @@ def maybe_send_trade_alert(
             **base_result,
         }
 
-    selected_sender = sender or send_telegram_message
     if test_mode:
-        telegram_result = _safe_send(selected_sender, message)
+        if sender is None:
+            return {
+                "sent": False,
+                "reason": "test_sender_required",
+                "test_mode": True,
+                "message_length": len(message),
+                "telegram_ok": False,
+                **base_result,
+            }
+        telegram_result = _safe_send(sender, message)
         sent = telegram_result.get("ok") is True
         return {
             "sent": sent,
@@ -616,6 +649,7 @@ def maybe_send_trade_alert(
             **base_result,
         }
 
+    selected_sender = sender or send_telegram_message
     signature = _alert_signature(candidate)
     duplicate = _should_suppress_duplicate(signature)
     if duplicate.get("suppress"):
