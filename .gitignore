@@ -108,3 +108,8 @@ __pycache__/
 
 
 .env.local
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
