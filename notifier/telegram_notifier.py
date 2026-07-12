@@ -10,13 +10,25 @@ from pathlib import Path
 
 from typing import Dict, Any
 
-from notifier.alert_ledger_registration import (
+try:
 
-    prepare_trade_alert_registration,
+    from notifier.alert_ledger_registration import (
 
-    register_successful_trade_alert,
+        prepare_trade_alert_registration,
 
-)
+        register_successful_trade_alert,
+
+    )
+
+except Exception:
+
+    def prepare_trade_alert_registration(text):
+
+        return None
+
+    def register_successful_trade_alert(prepared, response):
+
+        return {"ok": False, "registered": False, "code": "HOOK_UNAVAILABLE"}
 
 
 
