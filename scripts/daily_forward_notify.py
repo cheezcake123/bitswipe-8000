@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 
+from korean_alerts import localize_alert_text
 import argparse
 
 import json
@@ -359,6 +360,7 @@ def split_message(text):
 
 def send_chunk(token, chat_id, text):
 
+    text = localize_alert_text(text)
     url = (
 
         f"https://api.telegram.org/"

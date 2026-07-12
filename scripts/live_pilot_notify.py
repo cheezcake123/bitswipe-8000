@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 
+from korean_alerts import localize_alert_text
 import json
 
 import os
@@ -369,6 +370,7 @@ def mark_sent(candidates):
 
 def send_telegram(text):
 
+    text = localize_alert_text(text)
     token = os.getenv("TELEGRAM_BOT_TOKEN")
 
     chat_id = os.getenv("TELEGRAM_CHAT_ID")

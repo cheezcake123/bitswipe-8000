@@ -1,6 +1,7 @@
 
 # -*- coding: utf-8 -*-
 
+from korean_alerts import localize_alert_text
 import os
 
 import sys
@@ -323,6 +324,7 @@ def mark_symbol_ai(symbol, state):
 
 def send_telegram(text):
 
+    text = localize_alert_text(text)
     token = os.getenv("TELEGRAM_BOT_TOKEN")
 
     chat_id = os.getenv("TELEGRAM_CHAT_ID")

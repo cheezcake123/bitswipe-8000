@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 
+from korean_alerts import localize_alert_text
 import argparse
 
 import hashlib
@@ -199,6 +200,7 @@ def run_health():
 
 def send_telegram(message):
 
+    message = localize_alert_text(message)
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()

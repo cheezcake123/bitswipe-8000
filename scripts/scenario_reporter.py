@@ -743,11 +743,13 @@ def scenario_report(row, classification):
 
         if strict
 
-        else "관찰 전용 — Forward V1 실전 기준 외"
+        else "관찰 전용 — 실전 진입 기준 미충족"
 
     )
 
 
+
+    classification_ko = {"PILOT_ELIGIBLE_STRICT": "엄격 조건 충족", "WATCH_STRONG_RR_NOT_STRICT": "손익비 양호 관찰 대상"}.get(classification, classification)
 
     lines = [
 
@@ -759,7 +761,7 @@ def scenario_report(row, classification):
 
         f"등급: {row['grade']}",
 
-        f"분류: {classification}",
+        f"분류: {classification_ko}",
 
         f"관점: {view}",
 

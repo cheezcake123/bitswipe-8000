@@ -131,37 +131,264 @@ def _clean_state(state: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+def _ko(value: Any, mapping: dict[str, str], default: str) -> str:
+
+    key = str(value or "").strip()
+
+    return mapping.get(key, key or default)
+
+
+
+
+
+_REASON_KO = {
+
+    "near_recent_support": "\ucd5c\uadfc \uc9c0\uc9c0\uc120 \uadfc\ucc98",
+
+    "near_recent_resistance": "\ucd5c\uadfc \uc800\ud56d\uc120 \uadfc\ucc98",
+
+    "possible_reversal_near_support": "\uc9c0\uc9c0\uc120 \ubd80\uadfc \ubc18\ub4f1 \uac00\ub2a5\uc131",
+
+    "possible_rejection_or_breakout_near_resistance": "\uc800\ud56d\uc120 \ubd80\uadfc \ub3cc\ud30c\u00b7\uac70\uc808 \ubd84\uae30\uc810",
+
+    "strong_1h_move_pullback_needed": "1\uc2dc\uac04 \uac15\ud55c \uc6c0\uc9c1\uc784 \uc774\ud6c4 \ub20c\ub9bc \ud655\uc778 \ud544\uc694",
+
+    "strong_4h_move": "4\uc2dc\uac04 \uae30\uc900 \uac15\ud55c \uac00\uaca9 \uc6c0\uc9c1\uc784",
+
+    "volume_spike": "\uac70\ub798\ub7c9 \uae09\uc99d",
+
+    "volume_expansion": "\uac70\ub798\ub7c9 \uc99d\uac00",
+
+    "uptrend_context": "\uc0c1\uc2b9 \ucd94\uc138 \ud658\uacbd",
+
+    "downtrend_context": "\ud558\ub77d \ucd94\uc138 \ud658\uacbd",
+
+}
+
+
+
+
+
+_EVENT_KO = {
+
+    "structure_watch": "\uad6c\uc870 \uad00\ucc30",
+
+    "near_support_watch": "\uc9c0\uc9c0\uc120 \uad00\ucc30",
+
+    "near_resistance_watch": "\uc800\ud56d\uc120 \uad00\ucc30",
+
+    "reversal_watch_near_support": "\uc9c0\uc9c0\uc120 \ubc18\ub4f1 \uad00\ucc30",
+
+    "resistance_decision_watch": "\uc800\ud56d\uc120 \ub3cc\ud30c\u00b7\uac70\uc808 \uad00\ucc30",
+
+    "strong_move_pullback_watch": "\uac15\ud55c \uc6c0\uc9c1\uc784 \uc774\ud6c4 \ub20c\ub9bc \uad00\ucc30",
+
+    "watch": "\uad00\ucc30",
+
+}
+
+
+
+
+
+_DIRECTION_KO = {
+
+    "two_way": "\uc591\ubc29\ud5a5 \uad00\ucc30",
+
+    "bullish_watch": "\uc0c1\uc2b9 \uad00\ucc30",
+
+    "bearish_watch": "\ud558\ub77d \uad00\ucc30",
+
+    "long": "\ub871",
+
+    "short": "\uc20f",
+
+}
+
+
+
+
+
+_TREND_KO = {
+
+    "uptrend": "\uc0c1\uc2b9 \ucd94\uc138",
+
+    "downtrend": "\ud558\ub77d \ucd94\uc138",
+
+    "mixed": "\ud63c\uc870",
+
+    "unknown": "\uc54c \uc218 \uc5c6\uc74c",
+
+}
+
+
+
+
+
+_CONFIRMATION_KO = {
+
+    "Wait for candle close confirmation and a clean retest. NOT ENTRY.":
+
+        "\uce94\ub4e4 \uc885\uac00 \ud655\uc815\uacfc \uc7ac\uc2dc\ud5d8\uc744 \uae30\ub2e4\ub9ac\uc138\uc694. \uc544\uc9c1 \uc9c4\uc785\ud558\uc9c0 \ub9c8\uc138\uc694.",
+
+    "Watch for either support hold or breakdown. Confirmation needed.":
+
+        "\uc9c0\uc9c0\uc120 \ubc29\uc5b4 \ub610\ub294 \ud558\ud5a5 \uc774\ud0c8 \uc5ec\ubd80\ub97c \ud655\uc778\ud558\uc138\uc694.",
+
+    "Watch for breakout close or rejection. Confirmation needed.":
+
+        "\ub3cc\ud30c \uc885\uac00 \ud655\uc815 \ub610\ub294 \uc800\ud56d \uac70\uc808\uc744 \ud655\uc778\ud558\uc138\uc694.",
+
+    "Strong move detected; wait for pullback/retest. NOT ENTRY.":
+
+        "\uac15\ud55c \uc6c0\uc9c1\uc784\uc774 \uac10\uc9c0\ub410\uc2b5\ub2c8\ub2e4. \ub20c\ub9bc\uacfc \uc7ac\uc2dc\ud5d8\uc744 \uae30\ub2e4\ub9ac\uc138\uc694. \uc544\uc9c1 \uc9c4\uc785\ud558\uc9c0 \ub9c8\uc138\uc694.",
+
+}
+
+
+
+
+
 def _format_reasons(event: dict[str, Any]) -> str:
+
     reasons = event.get("reasons") or []
+
     if not isinstance(reasons, list) or not reasons:
-        return "N/A"
-    return ", ".join(str(item) for item in reasons[:5])
+
+        return "\ud655\uc778\ub41c \uad00\ucc30 \uc0ac\uc720 \uc5c6\uc74c"
+
+
+
+    translated = [
+
+        _ko(reason, _REASON_KO, "\uae30\ud0c0 \uad00\ucc30 \uc0ac\uc720")
+
+        for reason in reasons[:5]
+
+    ]
+
+    return "\n".join(f"\u2022 {reason}" for reason in translated)
+
+
+
 
 
 def format_watch_message(event: dict[str, Any]) -> str:
+
     symbol = str(event.get("symbol") or "UNKNOWN").upper()
-    asset_class = str(event.get("asset_class") or "unknown").upper()
+
+    asset_class = str(event.get("asset_class") or "unknown").lower()
+
+
+
+    asset_class_ko = {
+
+        "crypto": "\uac00\uc0c1\uc790\uc0b0",
+
+        "tradfi": "\uc804\ud1b5 \uae08\uc735\uc790\uc0b0",
+
+    }.get(asset_class, asset_class.upper())
+
+
+
     score = event.get("score")
+
     min_score = event.get("min_score")
-    return (
-        "BitSwipe B-grade WATCH\n"
-        "NOT ENTRY - confirmation needed\n\n"
-        f"{symbol} / {asset_class}\n"
-        f"Event: {event.get('event_type') or 'watch'}\n"
-        f"Direction: {event.get('direction') or 'two_way'}\n"
-        f"Score: {_num(score, 0)} / min {_num(min_score, 0)}\n\n"
-        f"Price: {_price(event.get('price'))}\n"
-        f"Support: {_price(event.get('support'))}\n"
-        f"Resistance: {_price(event.get('resistance'))}\n"
-        f"Distance to support: {_num(event.get('distance_support_pct'), 2)}%\n"
-        f"Distance to resistance: {_num(event.get('distance_resistance_pct'), 2)}%\n"
-        f"RSI: {_num(event.get('rsi'), 1)}\n"
-        f"Trend: {event.get('trend') or 'unknown'}\n"
-        f"Volume ratio: {_num(event.get('volume_ratio'), 2)}x\n\n"
-        f"Why watching: {_format_reasons(event)}\n"
-        f"Confirmation: {event.get('confirmation') or 'Wait for confirmation. NOT ENTRY.'}\n\n"
-        "This is a watchlist heads-up only. No trade entry. Use low leverage and wait for confirmation."
+
+
+
+    event_type = _ko(
+
+        event.get("event_type"),
+
+        _EVENT_KO,
+
+        "\uc77c\ubc18 \uad00\ucc30",
+
     )
+
+    direction = _ko(
+
+        event.get("direction"),
+
+        _DIRECTION_KO,
+
+        "\uc591\ubc29\ud5a5 \uad00\ucc30",
+
+    )
+
+    trend = _ko(
+
+        event.get("trend"),
+
+        _TREND_KO,
+
+        "\uc54c \uc218 \uc5c6\uc74c",
+
+    )
+
+
+
+    raw_confirmation = str(
+
+        event.get("confirmation")
+
+        or "Wait for candle close confirmation and a clean retest. NOT ENTRY."
+
+    )
+
+    confirmation = _CONFIRMATION_KO.get(
+
+        raw_confirmation,
+
+        raw_confirmation,
+
+    )
+
+
+
+    return (
+
+        "\U0001f7e1 BitSwipe \uad00\ucc30 \uc54c\ub9bc\n"
+
+        "\U0001f6ab \ud604\uc7ac \uc9c4\uc785 \uae08\uc9c0 \u00b7 \ucd94\uac00 \ud655\uc778 \ud544\uc694\n\n"
+
+        f"\uc885\ubaa9: {symbol}\n"
+
+        f"\uc790\uc0b0: {asset_class_ko}\n"
+
+        f"\uad00\ucc30 \uc720\ud615: {event_type}\n"
+
+        f"\ubc29\ud5a5: {direction}\n"
+
+        f"\uc810\uc218: {_num(score, 0)} / \uae30\uc900 {_num(min_score, 0)}\n\n"
+
+        f"\ud604\uc7ac\uac00: {_price(event.get('price'))}\n"
+
+        f"\uc9c0\uc9c0\uc120: {_price(event.get('support'))}\n"
+
+        f"\uc800\ud56d\uc120: {_price(event.get('resistance'))}\n"
+
+        f"\uc9c0\uc9c0\uc120\uae4c\uc9c0 \uac70\ub9ac: {_num(event.get('distance_support_pct'), 2)}%\n"
+
+        f"\uc800\ud56d\uc120\uae4c\uc9c0 \uac70\ub9ac: {_num(event.get('distance_resistance_pct'), 2)}%\n"
+
+        f"RSI: {_num(event.get('rsi'), 1)}\n"
+
+        f"\ucd94\uc138: {trend}\n"
+
+        f"\uac70\ub798\ub7c9 \ube44\uc728: {_num(event.get('volume_ratio'), 2)}\ubc30\n\n"
+
+        f"\U0001f4cc \uad00\ucc30 \uc774\uc720\n{_format_reasons(event)}\n\n"
+
+        f"\u2705 \ud655\uc778\ud560 \uc870\uac74\n{confirmation}\n\n"
+
+        "\u26a0\ufe0f \uc774 \uc54c\ub9bc\uc740 \uc9c4\uc785 \uc2e0\ud638\uac00 \uc544\ub2d9\ub2c8\ub2e4. "
+
+        "\uc870\uac74\uc774 \ud655\uc778\ub420 \ub54c\uae4c\uc9c0 \ucd94\uaca9 \uc9c4\uc785\ud558\uc9c0 \ub9c8\uc138\uc694."
+
+    )
+
 
 
 def maybe_send_watch_alert(event: dict[str, Any], *, dry_run: bool = True) -> dict[str, Any]:

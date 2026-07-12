@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 
+from korean_alerts import localize_alert_text
 import argparse
 
 import json
@@ -540,6 +541,10 @@ def risk_sizing_lines(record):
 
 
 
+def resolution_text(value):
+    return {"CONFIRMED": "진입 조건 충족", "INVALIDATED": "시나리오 무효화", "EXPIRED": "시나리오 만료"}.get(str(value or ""), str(value or ""))
+
+
 def confirmed_message(record):
 
     lines = [
@@ -556,7 +561,7 @@ def confirmed_message(record):
 
         "확인 결과:",
 
-        f"- {record.get('resolution')}",
+        f"- {resolution_text(record.get('resolution'))}",
 
         "- 15분봉 확인 조건이 충족되었습니다.",
 
@@ -704,7 +709,7 @@ def invalidated_message(record):
 
         "폐기 사유:",
 
-        f"- {record.get('resolution')}",
+        f"- {resolution_text(record.get('resolution'))}",
 
         "",
 
@@ -782,7 +787,7 @@ def expired_message(record):
 
         "만료 사유:",
 
-        f"- {record.get('resolution')}",
+        f"- {resolution_text(record.get('resolution'))}",
 
         "- 제한 시간 동안 확인 조건이 충족되지 않았습니다.",
 
@@ -834,6 +839,7 @@ def build_message(record):
 
 def send_telegram(text):
 
+    text = localize_alert_text(text)
     token = os.environ.get(
 
         "TELEGRAM_BOT_TOKEN",

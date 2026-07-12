@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 
+from korean_alerts import localize_alert_text
 import argparse
 
 import json
@@ -385,6 +386,7 @@ def recently_sent(state, key):
 
 def send_telegram(text):
 
+    text = localize_alert_text(text)
     token = os.environ.get(
 
         "TELEGRAM_BOT_TOKEN",

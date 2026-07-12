@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 
+from korean_alerts import localize_alert_text
 import argparse
 
 import hashlib
@@ -1073,6 +1074,7 @@ def build_message(health, recovery=False, test=False):
 
 def send_telegram(text):
 
+    text = localize_alert_text(text)
     token = os.environ.get(
 
         "TELEGRAM_BOT_TOKEN",

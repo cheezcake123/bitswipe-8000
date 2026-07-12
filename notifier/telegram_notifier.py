@@ -1,4 +1,5 @@
 
+from notifier.korean_alerts import localize_alert_text
 import json
 
 import os
@@ -53,6 +54,7 @@ def _load_env_file(path: str = ".env") -> Dict[str, str]:
 
 def send_telegram_message(text: str) -> Dict[str, Any]:
 
+    text = localize_alert_text(text)
     env = _load_env_file()
 
 

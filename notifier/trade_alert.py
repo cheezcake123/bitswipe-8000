@@ -655,37 +655,391 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-        message = (
+        side_ko = {
 
-            "BitSwipe A-grade candidate\n\n"
+            "LONG": "\ub871",
 
-            f"{symbol} / {side}\n"
+            "SHORT": "\uc20f",
 
-            f"Confidence: {confidence:.0f}%\n"
+        }.get(str(side).upper(), str(side))
 
-            f"Current price: {_price(payload.get('price'))}\n\n"
 
-            f"Entry: {_price(guard.get('entry_price'))}\n"
 
-            f"Stop: {_price(guard.get('stop_price'))}\n"
+        analysis_json = payload.get("analysis_json") or {}
 
-            f"Target: {_price(guard.get('target_price'))}\n\n"
+        if not isinstance(analysis_json, dict):
 
-            f"Risk reward: {_num(guard.get('risk_reward_ratio'), 2)}\n"
+            analysis_json = {}
 
-            f"Stop distance: {_num(guard.get('stop_distance_percent'), 2)}%\n"
 
-            f"Leverage: {_num(guard.get('leverage'), 1)}x\n"
 
-            f"Leveraged loss: {_num(guard.get('leveraged_loss_percent_on_margin'), 2)}%\n"
+        report_sections = payload.get("report_sections") or {}
 
-            f"Max position for 1pct account risk: {_num(guard.get('max_position_percent_by_account_risk'), 2)}%\n\n"
+        if not isinstance(report_sections, dict):
 
-            "Verdict: Risk Guard PASS\n"
+            report_sections = {}
 
-            "Do not chase immediately. Re-check candle close and stop location."
+
+
+        levels = analysis_json.get("levels") or {}
+
+        if not isinstance(levels, dict):
+
+            levels = {}
+
+
+
+        trade = analysis_json.get("trade") or {}
+
+        if not isinstance(trade, dict):
+
+            trade = {}
+
+
+
+        actions = analysis_json.get("actions") or {}
+
+        if not isinstance(actions, dict):
+
+            actions = {}
+
+
+
+        def _text(value, default="-"):
+
+            value = str(value or "").strip()
+
+            return value if value else default
+
+
+
+        def _items(value, limit=2):
+
+            if isinstance(value, list):
+
+                return [
+
+                    str(item).strip()
+
+                    for item in value
+
+                    if str(item).strip()
+
+                ][:limit]
+
+            if isinstance(value, str) and value.strip():
+
+                return [value.strip()]
+
+            return []
+
+
+
+        view = _text(
+
+            report_sections.get("view")
+
+            or analysis_json.get("view"),
+
+            side_ko,
 
         )
+
+
+
+        regime = _text(
+
+            report_sections.get("regime")
+
+            or analysis_json.get("regime"),
+
+            "\ud655\uc778 \ud544\uc694",
+
+        )
+
+
+
+        summary = _text(
+
+            report_sections.get("summary")
+
+            or analysis_json.get("summary"),
+
+            "\ub9ac\uc2a4\ud06c \uc2ec\uc0ac\ub97c \ud1b5\uacfc\ud55c \uc870\uac74\ubd80 \uc9c4\uc785 \ud6c4\ubcf4\uc785\ub2c8\ub2e4.",
+
+        )
+
+
+
+        invalidation_text = _text(
+
+            report_sections.get("invalidation")
+
+            or analysis_json.get("invalidation"),
+
+            "\uc190\uc808\uac00 \uc774\ud0c8 \uc2dc \uae30\uc874 \uc2dc\ub098\ub9ac\uc624\ub97c \ud3d0\uae30\ud569\ub2c8\ub2e4.",
+
+        )
+
+
+
+        facts = _items(
+
+            report_sections.get("facts")
+
+            or analysis_json.get("key_facts"),
+
+            2,
+
+        )
+
+
+
+        interpretations = _items(
+
+            report_sections.get("interpretation")
+
+            or analysis_json.get("inferences"),
+
+            2,
+
+        )
+
+
+
+        counter_scenarios = _items(
+
+            report_sections.get("counter_scenario")
+
+            or analysis_json.get("counter_scenario"),
+
+            2,
+
+        )
+
+
+
+        aggressive = _text(
+
+            actions.get("aggressive"),
+
+            "\ud655\uc778\ubd09 \ub9c8\uac10 \ud6c4 \ucd08\uc18c\uc561\uc73c\ub85c\ub9cc \uac80\ud1a0",
+
+        )
+
+
+
+        conservative = _text(
+
+            actions.get("conservative"),
+
+            "\ub3cc\ud30c \ub610\ub294 \uc774\ud0c8 \ud6c4 \uc7ac\ud14c\uc2a4\ud2b8 \ud655\uc778 \uc804\uae4c\uc9c0 \uad00\ub9dd",
+
+        )
+
+
+
+        entry_num = _safe_float(guard.get("entry_price"))
+
+        stop_num = _safe_float(guard.get("stop_price"))
+
+        target_2_num = _safe_float(guard.get("target_price"))
+
+
+
+        target_1_num = None
+
+        if entry_num is not None and stop_num is not None:
+
+            risk_distance = abs(entry_num - stop_num)
+
+
+
+            if side == "LONG":
+
+                target_1_num = entry_num + risk_distance
+
+            elif side == "SHORT":
+
+                target_1_num = entry_num - risk_distance
+
+
+
+        if side == "LONG":
+
+            trigger_price = (
+
+                levels.get("bull_trigger")
+
+                if levels.get("bull_trigger") is not None
+
+                else levels.get("resistance")
+
+            )
+
+            trigger_text = (
+
+                f"{_price(trigger_price)} \uc704\uc5d0\uc11c 15\ubd84\ubd09 \uc885\uac00 \ud655\uc815 "
+
+                "\ud6c4 \uc7ac\ud14c\uc2a4\ud2b8 \uc9c0\uc9c0 \ud655\uc778"
+
+            )
+
+        else:
+
+            trigger_price = (
+
+                levels.get("bear_trigger")
+
+                if levels.get("bear_trigger") is not None
+
+                else levels.get("support")
+
+            )
+
+            trigger_text = (
+
+                f"{_price(trigger_price)} \uc544\ub798\uc5d0\uc11c 15\ubd84\ubd09 \uc885\uac00 \ud655\uc815 "
+
+                "\ud6c4 \ubc18\ub4f1 \uc7ac\ud14c\uc2a4\ud2b8 \uc800\ud56d \ud655\uc778"
+
+            )
+
+
+
+        message_lines = [
+
+            "\U0001f7e2 [BitSwipe \uc9c4\uc785 \uc2ec\uc0ac \ubcf4\uace0\uc11c]",
+
+            "",
+
+            f"\uc885\ubaa9: {symbol}",
+
+            "\ucd5c\uc885 \ud310\uc815: \ub9ac\uc2a4\ud06c \uc2ec\uc0ac \ud1b5\uacfc \u00b7 \uc870\uac74\ubd80 \uc218\ub3d9 \uac80\ud1a0",
+
+            f"\ubc29\ud5a5: {side_ko}",
+
+            f"\uc2e0\ub8b0\ub3c4: {confidence:.0f}%",
+
+            f"\uc2dc\uc7a5 \uad00\uc810: {view}",
+
+            f"\uc2dc\uc7a5 \uad6d\uba74: {regime}",
+
+            "",
+
+            "\U0001f4cc \ud604\uc7ac \uc0c1\ud669",
+
+            f"- {summary}",
+
+        ]
+
+
+
+        for item in facts:
+
+            message_lines.append(f"- {item}")
+
+
+
+        for item in interpretations:
+
+            message_lines.append(f"- {item}")
+
+
+
+        message_lines.extend([
+
+            "",
+
+            "\U0001f3af \uc9c4\uc785 \uc2dc\ub098\ub9ac\uc624",
+
+            f"1) {trigger_text}",
+
+            f"2) \uacf5\uaca9\uc801 \ub300\uc751: {aggressive}",
+
+            f"3) \ubcf4\uc218\uc801 \ub300\uc751: {conservative}",
+
+            "",
+
+            "\U0001f4b0 \uac00\uaca9 \uacc4\ud68d",
+
+            f"- \ud604\uc7ac\uac00: {_price(payload.get('price'))}",
+
+            f"- \uc9c4\uc785\uac00: {_price(entry_num)}",
+
+            f"- \uc190\uc808\uac00: {_price(stop_num)}",
+
+            f"- 1\ucc28 \ubaa9\ud45c(1R): {_price(target_1_num)}",
+
+            f"- 2\ucc28 \ubaa9\ud45c(AI \ucd5c\uc885 \ubaa9\ud45c): {_price(target_2_num)}",
+
+            f"- \uc608\uc0c1 \uc190\uc775\ube44: {_num(guard.get('risk_reward_ratio'), 2)}:1",
+
+            "",
+
+            "\U0001f6e1 \uc704\ud5d8 \uad00\ub9ac",
+
+            f"- \uc190\uc808 \uac70\ub9ac: {_num(guard.get('stop_distance_percent'), 2)}%",
+
+            f"- \uac80\ud1a0 \ub808\ubc84\ub9ac\uc9c0: \uaca9\ub9ac {_num(guard.get('leverage'), 1)}\ubc30",
+
+            f"- \ub808\ubc84\ub9ac\uc9c0 \ubc18\uc601 \uc608\uc0c1 \uc190\uc2e4: {_num(guard.get('leveraged_loss_percent_on_margin'), 2)}%",
+
+            f"- \uacc4\uc88c 1% \uc704\ud5d8 \uae30\uc900 \ucd5c\ub300 \uba85\ubaa9 \ud3ec\uc9c0\uc158: "
+
+            f"\uacc4\uc88c\uc758 {_num(guard.get('max_position_percent_by_account_risk'), 2)}%",
+
+            "",
+
+            "\U0001f4cb \ud3ec\uc9c0\uc158 \uad00\ub9ac",
+
+            "- 1\ucc28 \ubaa9\ud45c\uc5d0\uc11c \uc77c\ubd80 \uc775\uc808",
+
+            "- 1R \ub3c4\ub2ec \ud6c4 \uc190\uc808\uac00\ub97c \uc9c4\uc785\uac00 \ub610\ub294 \ubcf8\uc808 \uadfc\ucc98\ub85c \uc870\uc815",
+
+            "- \ubb3c\ud0c0\uae30, \uc190\uc808 \ud655\ub300, \ucd94\uaca9 \uc9c4\uc785 \uae08\uc9c0",
+
+            "",
+
+            "\u274c \uc2dc\ub098\ub9ac\uc624 \ud3d0\uae30 \uc870\uac74",
+
+            f"- {invalidation_text}",
+
+        ])
+
+
+
+        for item in counter_scenarios:
+
+            message_lines.append(f"- {item}")
+
+
+
+        message_lines.extend([
+
+            "",
+
+            "\u26a0\ufe0f \uc790\ub3d9 \uc8fc\ubb38 \uc2e0\ud638\uac00 \uc544\ub2d9\ub2c8\ub2e4.",
+
+            "\ud655\uc778\ubd09, \uc9c4\uc785\uac00, \uc190\uc808\uac00, \uc190\uc775\ube44\ub97c \uc7ac\ud655\uc778\ud55c \ud6c4 \uc0ac\uc6a9\uc790\uac00 \ucd5c\uc885 \uc2b9\uc778\ud558\uc138\uc694.",
+
+        ])
+
+
+
+        message = "\n".join(message_lines)
+
+
+
+        if len(message) > 3900:
+
+            message = (
+
+                message[:3820].rstrip()
+
+                + "\n\n\u203b \ud154\ub808\uadf8\ub7a8 \uae38\uc774 \uc81c\ud55c\uc73c\ub85c \uc77c\ubd80 \uc124\uba85\uc744 \uc904\uc600\uc2b5\ub2c8\ub2e4."
+
+            )
 
 
 
