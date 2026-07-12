@@ -1,12 +1,12 @@
 {
   "experiment_id": "bitswipe_forward_v1",
-  "locked_at": "2026-07-10T05:02:35.695713+00:00",
-  "git_commit_at_lock": "d0bf76489cac5380935177311fb05db247774303",
+  "locked_at": "2026-07-12T03:06:02.724574+00:00",
+  "git_commit_at_lock": "924a9493bb3efb4ea547190bf26428dd34f49ed8",
   "critical_files": {
-    "scripts/watchlist_scan_once.py": "cbb4e0d83116ca4a5217873de63db8fb6245a95a010e8a9249efdba6673f3c73",
+    "scripts/watchlist_scan_once.py": "8af992673100e3d2a9a8a8df6167e73832d40ed949b899fc84b5e553c0812475",
     "scripts/prediction_watch_store.py": "a8b9ba3decd416432c980d798bfb536a5c0b2cab83d94bcb7ac5472edbfede56",
     "scripts/trade_path_evaluate.py": "83756194f975cc9abbf718aafad49a04c66565f9c363b9898612751067ae7177",
-    "scripts/pilot_policy_notify.py": "422067d5af2d2bd4e5562ac593d8d5bbd855c0f78c5cffb66c3cdc5d1a179e39",
+    "scripts/pilot_policy_notify.py": "63fb4ebe7bcc1baacef11c9aef257a2d8c462e3d06203ab7a5bc1ccbced09308",
     "config/trade_experiment_v1.json": "b4881ee805a69e83b650a853f5746f82fdaa855201befcbe45b72b8ac5357581"
   }
 }
