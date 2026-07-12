@@ -10,6 +10,14 @@ from pathlib import Path
 
 from typing import Dict, Any
 
+from notifier.alert_ledger_registration import (
+
+    prepare_trade_alert_registration,
+
+    register_successful_trade_alert,
+
+)
+
 
 
 
@@ -55,6 +63,11 @@ def _load_env_file(path: str = ".env") -> Dict[str, str]:
 def send_telegram_message(text: str) -> Dict[str, Any]:
 
     text = localize_alert_text(text)
+
+    prepared = prepare_trade_alert_registration(text)
+
+    outbound_text = prepared.outbound_text if prepared is not None else text
+
     env = _load_env_file()
 
 
@@ -93,7 +106,7 @@ def send_telegram_message(text: str) -> Dict[str, Any]:
 
         "chat_id": chat_id,
 
-        "text": text,
+        "text": outbound_text,
 
         "disable_web_page_preview": True,
 
@@ -125,7 +138,19 @@ def send_telegram_message(text: str) -> Dict[str, Any]:
 
             body = res.read().decode("utf-8")
 
-            return json.loads(body)
+            response = json.loads(body)
+
+            if prepared is not None and response.get("ok"):
+
+                response["ledger_registration"] = register_successful_trade_alert(
+
+                    prepared,
+
+                    response,
+
+                )
+
+            return response
 
     except Exception as exc:
 
@@ -136,4 +161,3 @@ def send_telegram_message(text: str) -> Dict[str, Any]:
             "error": str(exc),
 
         }
-
