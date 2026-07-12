@@ -17,7 +17,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
-from scripts.scenario_ledger import DEFAULT_DB_PATH, ScenarioLedger
+try:
+    from scripts.scenario_ledger import DEFAULT_DB_PATH, ScenarioLedger
+except ModuleNotFoundError:  # standalone scripts may put scripts/ on sys.path
+    from scenario_ledger import DEFAULT_DB_PATH, ScenarioLedger
 
 LOGGER = logging.getLogger(__name__)
 
@@ -125,6 +128,13 @@ def prepare_trade_alert_registration(
         return None
 
     try:
+        readiness = ScenarioLedger(configured_db_path(env)).inspect_database()
+        if not readiness.ok:
+            LOGGER.warning(
+                "Scenario Ledger registration skipped: database not ready (%s)",
+                readiness.code,
+            )
+            return None
         symbol = _normalize_symbol(_field(text, "종목"))
         direction = _normalize_direction(_field(text, "방향"))
         entry = _number(_field(text, "- 진입가"))
