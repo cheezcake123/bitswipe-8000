@@ -96,6 +96,7 @@ class AlertLedgerRegistrationTest(unittest.TestCase):
         self.assertFalse(self.db_path.exists())
 
     def test_02_enabled_parses_plan_and_appends_scenario_id(self):
+        self.assertTrue(ScenarioLedger(self.db_path).initialize().ok)
         env = {**self.base_env, FEATURE_FLAG: "1"}
         prepared = prepare_trade_alert_registration(
             TRADE_TEXT,
@@ -116,6 +117,7 @@ class AlertLedgerRegistrationTest(unittest.TestCase):
         self.assertIsNone(prepare_trade_alert_registration("상태 점검 완료", env=env))
 
     def test_04_invalid_directional_prices_are_ignored(self):
+        self.assertTrue(ScenarioLedger(self.db_path).initialize().ok)
         env = {**self.base_env, FEATURE_FLAG: "on"}
         self.assertIsNone(prepare_trade_alert_registration(INVALID_TEXT, env=env))
 
@@ -161,22 +163,14 @@ class AlertLedgerRegistrationTest(unittest.TestCase):
         self.assertEqual(result["code"], "TELEGRAM_NOT_OK")
         self.assertEqual(ledger.list_active_scenarios().data, [])
 
-    def test_07_missing_db_does_not_break_success_response(self):
+    def test_07_enabled_missing_db_does_not_annotate_or_create(self):
         env = {**self.base_env, FEATURE_FLAG: "1"}
         prepared = prepare_trade_alert_registration(
             TRADE_TEXT,
             env=env,
             scenario_id="BS-TEST-0004",
         )
-        result = register_successful_trade_alert(
-            prepared,
-            self.telegram_success(99),
-            db_path=self.db_path,
-            env=env,
-        )
-        self.assertFalse(result["ok"])
-        self.assertFalse(result["registered"])
-        self.assertEqual(result["code"], "NOT_INITIALIZED")
+        self.assertIsNone(prepared)
         self.assertFalse(self.db_path.exists())
 
     def test_08_duplicate_success_is_idempotent(self):
