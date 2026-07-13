@@ -168,8 +168,18 @@ class AlertRegistrationV02Test(unittest.TestCase):
         self.assertIsNotNone(prepare_trade_alert_registration(LOW_TEXT, plan=original, env=env))
         self.assertEqual(original, EXACT_PLAN)
 
+    def test_08_non_finite_prices_fail_closed(self):
+        self.initialize()
+        env = {**self.env, FEATURE_FLAG: "1"}
+        for field, value in (("entry", float("nan")), ("stop", float("inf")), ("target_2", float("-inf"))):
+            invalid = {**EXACT_PLAN, field: value}
+            self.assertIsNone(
+                prepare_trade_alert_registration(LOW_TEXT, plan=invalid, env=env),
+                f"{field}={value!r} should be rejected",
+            )
+
     @unittest.skipIf(trade_alert_module is None, "complete repository required")
-    def test_08_trade_alert_passes_exact_raw_plan(self):
+    def test_09_trade_alert_passes_exact_raw_plan(self):
         payload = {
             "symbol": "LOWUSDT",
             "pair_label": "LOWUSDT",

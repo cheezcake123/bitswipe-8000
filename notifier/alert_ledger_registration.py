@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -76,7 +77,8 @@ def _number(value: object) -> Optional[float]:
         return None
     if isinstance(value, (int, float)):
         try:
-            return float(value)
+            number = float(value)
+            return number if math.isfinite(number) else None
         except (TypeError, ValueError, OverflowError):
             return None
     text = str(value).strip()
@@ -86,7 +88,8 @@ def _number(value: object) -> Optional[float]:
     if not match:
         return None
     try:
-        return float(match.group(0).replace(",", ""))
+        number = float(match.group(0).replace(",", ""))
+        return number if math.isfinite(number) else None
     except (TypeError, ValueError, OverflowError):
         return None
 
