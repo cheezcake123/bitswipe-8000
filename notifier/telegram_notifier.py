@@ -8,7 +8,7 @@ import urllib.request
 
 from pathlib import Path
 
-from typing import Dict, Any
+from typing import Dict, Any, Mapping, Optional
 
 try:
 
@@ -22,7 +22,7 @@ try:
 
 except Exception:
 
-    def prepare_trade_alert_registration(text):
+    def prepare_trade_alert_registration(text, *, plan=None, env=None):
 
         return None
 
@@ -72,11 +72,11 @@ def _load_env_file(path: str = ".env") -> Dict[str, str]:
 
 
 
-def send_telegram_message(text: str) -> Dict[str, Any]:
+def send_telegram_message(text: str, *, registration_plan: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
 
     text = localize_alert_text(text)
 
-    prepared = prepare_trade_alert_registration(text)
+    prepared = prepare_trade_alert_registration(text, plan=registration_plan)
 
     outbound_text = prepared.outbound_text if prepared is not None else text
 

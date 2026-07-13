@@ -1,14 +1,17 @@
-"""Optional post-send registration for BitSwipe trade alerts.
+"""Optional post-send Scenario Ledger registration for BitSwipe trade alerts.
 
-This module is deliberately fail-open for the existing Telegram pipeline:
-registration is disabled by default, never creates the operational database,
-and never raises an exception to its caller.
+Version 0.2 accepts the exact structured trade plan from ``trade_alert.py``.
+Rendered-text parsing remains only as a backwards-compatible fallback.
+The module is deliberately fail-open for Telegram: registration is disabled by
+default, never creates the operational database, and never raises to callers.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -27,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 FEATURE_FLAG = "SCENARIO_LEDGER_ALERT_REGISTRATION_ENABLED"
 DB_PATH_ENV = "SCENARIO_LEDGER_DB_PATH"
 TRADE_ALERT_MARKER = "[BitSwipe 진입 심사 보고서]"
-REGISTRATION_VERSION = "alert_registration_v0.1"
+REGISTRATION_VERSION = "alert_registration_v0.2"
 
 
 @dataclass(frozen=True)
@@ -43,7 +46,9 @@ class PreparedTradeAlert:
     target_2: float
     rr: Optional[float]
     confidence: Optional[float]
+    source_mode: str
     text_sha256: str
+    plan_sha256: Optional[str]
 
 
 def _truthy(value: object) -> bool:
@@ -68,21 +73,36 @@ def _field(text: str, label: str) -> Optional[str]:
 
 
 def _number(value: object) -> Optional[float]:
-    text = str(value or "").strip()
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            number = float(value)
+            return number if math.isfinite(number) else None
+        except (TypeError, ValueError, OverflowError):
+            return None
+    text = str(value).strip()
     if not text or text.upper() in {"N/A", "NA", "NONE", "-"}:
         return None
     match = re.search(r"[-+]?\d[\d,]*(?:\.\d+)?", text)
     if not match:
         return None
     try:
-        return float(match.group(0).replace(",", ""))
-    except ValueError:
+        number = float(match.group(0).replace(",", ""))
+        return number if math.isfinite(number) else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
+def _first(mapping: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in mapping and mapping[key] is not None:
+            return mapping[key]
+    return None
+
+
 def _normalize_symbol(value: object) -> str:
-    symbol = re.sub(r"[\s/_-]+", "", str(value or "").upper())
-    return symbol
+    return re.sub(r"[\s/_-]+", "", str(value or "").upper())
 
 
 def _normalize_direction(value: object) -> Optional[str]:
@@ -109,22 +129,91 @@ def _valid_plan(direction: str, entry: float, stop: float, target: float) -> boo
     return False
 
 
+def _canonical_plan_hash(plan: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        dict(plan),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _from_structured_plan(plan: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    symbol = _normalize_symbol(_first(plan, "symbol", "pair_label"))
+    direction = _normalize_direction(_first(plan, "direction", "side", "signal"))
+    entry = _number(_first(plan, "entry", "entry_price"))
+    stop = _number(_first(plan, "stop", "stop_price"))
+    target_1 = _number(_first(plan, "target_1", "first_target"))
+    target_2 = _number(_first(plan, "target_2", "target", "target_price"))
+    rr = _number(_first(plan, "rr", "risk_reward_ratio"))
+    confidence = _number(plan.get("confidence"))
+
+    if not symbol or direction is None or entry is None or stop is None or target_2 is None:
+        return None
+    if not _valid_plan(direction, entry, stop, target_2):
+        return None
+    return {
+        "symbol": symbol,
+        "direction": direction,
+        "entry": entry,
+        "stop": stop,
+        "target_1": target_1,
+        "target_2": target_2,
+        "rr": rr,
+        "confidence": confidence,
+        "source_mode": "structured_plan",
+        "plan_sha256": _canonical_plan_hash(plan),
+    }
+
+
+def _from_rendered_text(text: str) -> Optional[Dict[str, Any]]:
+    symbol = _normalize_symbol(_field(text, "종목"))
+    direction = _normalize_direction(_field(text, "방향"))
+    entry = _number(_field(text, "- 진입가"))
+    stop = _number(_field(text, "- 손절가"))
+    target_1 = _number(_field(text, "- 1차 목표(1R)"))
+    target_2 = _number(_field(text, "- 2차 목표(AI 최종 목표)"))
+    rr = _number(_field(text, "- 예상 손익비"))
+    confidence = _number(_field(text, "신뢰도"))
+
+    if not symbol or direction is None or entry is None or stop is None or target_2 is None:
+        return None
+    if not _valid_plan(direction, entry, stop, target_2):
+        return None
+    return {
+        "symbol": symbol,
+        "direction": direction,
+        "entry": entry,
+        "stop": stop,
+        "target_1": target_1,
+        "target_2": target_2,
+        "rr": rr,
+        "confidence": confidence,
+        "source_mode": "rendered_text_fallback",
+        "plan_sha256": None,
+    }
+
+
 def prepare_trade_alert_registration(
     text: str,
     *,
+    plan: Optional[Mapping[str, Any]] = None,
     env: Optional[Mapping[str, str]] = None,
     scenario_id: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> Optional[PreparedTradeAlert]:
-    """Return registration context and an ID-annotated message when eligible.
+    """Prepare an ID-annotated alert without creating a database.
 
-    ``None`` means "do not alter the existing Telegram flow". Parsing errors
-    are logged but never propagated.
+    Structured ``plan`` values take precedence and preserve sub-cent prices.
+    ``None`` means "leave the existing Telegram flow unchanged".
     """
 
     if not registration_enabled(env):
         return None
-    if TRADE_ALERT_MARKER not in str(text or ""):
+    original = str(text or "")
+    if TRADE_ALERT_MARKER not in original:
         return None
 
     try:
@@ -135,40 +224,38 @@ def prepare_trade_alert_registration(
                 readiness.code,
             )
             return None
-        symbol = _normalize_symbol(_field(text, "종목"))
-        direction = _normalize_direction(_field(text, "방향"))
-        entry = _number(_field(text, "- 진입가"))
-        stop = _number(_field(text, "- 손절가"))
-        target_1 = _number(_field(text, "- 1차 목표(1R)"))
-        target_2 = _number(_field(text, "- 2차 목표(AI 최종 목표)"))
-        rr = _number(_field(text, "- 예상 손익비"))
-        confidence = _number(_field(text, "신뢰도"))
 
-        if not symbol or direction is None or entry is None or stop is None or target_2 is None:
-            LOGGER.warning("Scenario Ledger registration skipped: incomplete trade alert")
-            return None
-        if not _valid_plan(direction, entry, stop, target_2):
-            LOGGER.warning("Scenario Ledger registration skipped: invalid price direction")
-            return None
+        parsed = None
+        if isinstance(plan, Mapping):
+            parsed = _from_structured_plan(plan)
+            if parsed is None:
+                LOGGER.warning("Scenario Ledger registration skipped: invalid structured plan")
+                return None
+        else:
+            parsed = _from_rendered_text(original)
+            if parsed is None:
+                LOGGER.warning("Scenario Ledger registration skipped: invalid rendered trade alert")
+                return None
 
         sid = str(scenario_id or _new_scenario_id(now)).strip()
         if not sid:
             return None
-        original = str(text)
         outbound = f"{original}\n\n🆔 시나리오 ID: {sid}"
         return PreparedTradeAlert(
             scenario_id=sid,
             original_text=original,
             outbound_text=outbound,
-            symbol=symbol,
-            direction=direction,
-            entry=entry,
-            stop=stop,
-            target_1=target_1,
-            target_2=target_2,
-            rr=rr,
-            confidence=confidence,
+            symbol=parsed["symbol"],
+            direction=parsed["direction"],
+            entry=parsed["entry"],
+            stop=parsed["stop"],
+            target_1=parsed["target_1"],
+            target_2=parsed["target_2"],
+            rr=parsed["rr"],
+            confidence=parsed["confidence"],
+            source_mode=parsed["source_mode"],
             text_sha256=hashlib.sha256(original.encode("utf-8")).hexdigest(),
+            plan_sha256=parsed["plan_sha256"],
         )
     except Exception as exc:  # pragma: no cover - defensive boundary
         LOGGER.warning("Scenario Ledger registration prepare failed: %s", exc)
@@ -182,7 +269,7 @@ def register_successful_trade_alert(
     db_path: Optional[str | Path] = None,
     env: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
-    """Persist a prepared alert only after Telegram reports success."""
+    """Persist a prepared scenario only after Telegram reports success."""
 
     if prepared is None:
         return {"ok": True, "registered": False, "code": "NOT_PREPARED"}
@@ -205,6 +292,7 @@ def register_successful_trade_alert(
         )
         payload = {
             "registration_version": REGISTRATION_VERSION,
+            "registration_source_mode": prepared.source_mode,
             "source_alert_id": source_alert_id,
             "telegram_message_id": message_id,
             "entry": prepared.entry,
@@ -215,6 +303,7 @@ def register_successful_trade_alert(
             "rr": prepared.rr,
             "confidence": prepared.confidence,
             "alert_text_sha256": prepared.text_sha256,
+            "structured_plan_sha256": prepared.plan_sha256,
             "sent_at": sent_at,
         }
         ledger = ScenarioLedger(db_path or configured_db_path(env))
@@ -232,6 +321,7 @@ def register_successful_trade_alert(
             "registered": ledger_result.code in {"CREATED", "ALREADY_EXISTS"},
             "code": ledger_result.code,
             "scenario_id": prepared.scenario_id,
+            "source_mode": prepared.source_mode,
             "message": ledger_result.message,
         }
     except Exception as exc:  # pragma: no cover - defensive boundary

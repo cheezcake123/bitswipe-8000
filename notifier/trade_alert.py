@@ -1043,7 +1043,23 @@ def maybe_send_trade_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-        telegram_result = send_telegram_message(message)
+        registration_plan = {
+            "symbol": symbol,
+            "direction": side,
+            "entry": entry_num,
+            "stop": stop_num,
+            "target_1": target_1_num,
+            "target_2": target_2_num,
+            "rr": _safe_float(guard.get("risk_reward_ratio")),
+            "confidence": confidence,
+            "signature": signature,
+            "risk_verdict": verdict,
+        }
+
+        telegram_result = send_telegram_message(
+            message,
+            registration_plan=registration_plan,
+        )
 
 
 
