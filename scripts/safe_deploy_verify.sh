@@ -4,7 +4,6 @@ set -Eeuo pipefail
 
 readonly APP_DIR="/opt/bitswipe"
 readonly TARGET_BRANCH="feature/candidate-validation-logs"
-readonly DEFAULT_EXPECTED_COMMIT="8bd977a6347cb827378a05e3f28677a15eebf7f2"
 readonly SERVICE_NAME="bitswipe.service"
 readonly WATCH_TIMER_NAME="bitswipe-btc-watch.timer"
 readonly FEATURE_FLAG="SCENARIO_LEDGER_ALERT_REGISTRATION_ENABLED"
@@ -12,19 +11,21 @@ readonly DATABASE_PATH="data/scenario_ledger.sqlite3"
 readonly FATAL_LOG_PATTERN='Traceback|SyntaxError|ImportError|ModuleNotFoundError|Failed to start'
 
 CHECK_ONLY=0
-EXPECTED_COMMIT="$DEFAULT_EXPECTED_COMMIT"
+EXPECTED_COMMIT=""
 CURRENT_STEP="인수 확인"
 FAILURE_REASON=""
 SUCCESS=0
 MAIN_PID=""
 RESTART_CURSOR=""
+declare -a ENVIRONMENT_FILE_PATHS=()
+declare -a ENVIRONMENT_FILE_OPTIONAL=()
 
 usage() {
     printf '%s\n' \
-        '사용법: bash scripts/safe_deploy_verify.sh [--check-only] [--expected-commit SHA]' \
+        '사용법: bash scripts/safe_deploy_verify.sh --expected-commit <40자리 SHA> [--check-only]' \
         '' \
-        '  --check-only          git 병합과 서비스 재시작 없이 모든 검증만 수행합니다.' \
-        "  --expected-commit SHA origin/${TARGET_BRANCH}에 있어야 할 40자리 커밋입니다." \
+        "  --expected-commit SHA origin/${TARGET_BRANCH}에 있어야 할 검토된 커밋입니다. 모든 실행에서 필수입니다." \
+        '  --check-only          같은 SHA를 확인하되 git 병합과 서비스 재시작은 하지 않습니다.' \
         '  -h, --help            이 도움말을 표시합니다.'
 }
 
@@ -88,6 +89,8 @@ parse_args() {
         esac
     done
 
+    [[ -n "$EXPECTED_COMMIT" ]] || \
+        fail "안전을 위해 --expected-commit <40자리 SHA>를 모든 실행에서 반드시 지정해야 합니다."
     [[ "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || \
         fail "예상 커밋은 정확한 40자리 16진수 SHA여야 합니다."
     EXPECTED_COMMIT="${EXPECTED_COMMIT,,}"
@@ -178,22 +181,144 @@ verify_systemd_flag_disabled() {
             fail "systemd unit/drop-in 설정에서 $FEATURE_FLAG가 활성화되어 있습니다."
         fi
     done <<<"$unit_text"
+
+    parse_environment_file_directives "$unit_text"
+    inspect_environment_files
 }
 
-verify_dotenv_flag_disabled() {
-    local line trimmed
+trim_whitespace() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
 
-    CURRENT_STEP=".env 기능 플래그 읽기 전용 확인"
-    [[ -f .env ]] || return
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        trimmed="${line#"${line%%[![:space:]]*}"}"
+add_environment_file_spec() {
+    local value optional=0 quoted=0 quote_character
+
+    value="$(trim_whitespace "$1")"
+    if [[ -z "$value" ]]; then
+        ENVIRONMENT_FILE_PATHS=()
+        ENVIRONMENT_FILE_OPTIONAL=()
+        return
+    fi
+    [[ "$value" != *'\' ]] || \
+        fail "여러 줄 EnvironmentFile 설정은 안전하게 해석할 수 없어 중단합니다: $value"
+
+    if [[ "$value" == -* ]]; then
+        optional=1
+        value="$(trim_whitespace "${value#-}")"
+    fi
+
+    quote_character="${value:0:1}"
+    if [[ "$quote_character" == '"' || "$quote_character" == "'" ]]; then
+        quoted=1
+        [[ "${value: -1}" == "$quote_character" && "${#value}" -ge 2 ]] || \
+            fail "EnvironmentFile 따옴표가 올바르게 닫히지 않았습니다: $value"
+        value="${value:1:${#value}-2}"
+    fi
+
+    if [[ "$optional" -eq 0 && "$value" == -* ]]; then
+        optional=1
+        value="${value#-}"
+    fi
+
+    [[ -n "$value" ]] || fail "EnvironmentFile 경로가 비어 있습니다."
+    [[ "$value" == /* ]] || fail "EnvironmentFile 경로가 절대 경로가 아닙니다: $value"
+    [[ "$value" != *'%'* ]] || \
+        fail "systemd specifier가 포함된 EnvironmentFile 경로는 안전하게 검사할 수 없습니다: $value"
+    [[ "$value" != *'\'* ]] || \
+        fail "이스케이프가 포함된 EnvironmentFile 경로는 안전하게 검사할 수 없습니다: $value"
+    if [[ "$quoted" -eq 0 && "$value" =~ [[:space:]] ]]; then
+        fail "따옴표 없는 EnvironmentFile 경로에 공백이 있습니다: $value"
+    fi
+
+    ENVIRONMENT_FILE_PATHS+=("$value")
+    ENVIRONMENT_FILE_OPTIONAL+=("$optional")
+}
+
+parse_environment_file_directives() {
+    local unit_text="$1" line trimmed section=""
+
+    ENVIRONMENT_FILE_PATHS=()
+    ENVIRONMENT_FILE_OPTIONAL=()
+    while IFS= read -r line; do
+        trimmed="$(trim_whitespace "$line")"
         case "$trimmed" in
-            ""|\#*) continue ;;
+            ""|\#*|\;*) continue ;;
+            \[*\])
+                section="$trimmed"
+                continue
+                ;;
         esac
-        if flag_enabled_in_text "$trimmed"; then
-            fail ".env에서 $FEATURE_FLAG가 활성화되어 있습니다. 파일은 수정하지 않았습니다."
+        [[ "$section" == "[Service]" ]] || continue
+        if [[ "$trimmed" =~ ^EnvironmentFile[[:space:]]*=(.*)$ ]]; then
+            add_environment_file_spec "${BASH_REMATCH[1]}"
         fi
-    done < .env
+    done <<<"$unit_text"
+}
+
+inspect_environment_file_content() {
+    local environment_file="$1" content="$2" line trimmed
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        trimmed="$(trim_whitespace "$line")"
+        case "$trimmed" in
+            ""|\#*|\;*) continue ;;
+        esac
+        if [[ "$trimmed" == *"$FEATURE_FLAG"* && "$trimmed" == *'\' ]]; then
+            fail "$environment_file 안의 $FEATURE_FLAG 여러 줄 값은 안전하게 검사할 수 없습니다."
+        fi
+        if flag_enabled_in_text "$trimmed"; then
+            fail "$environment_file에서 $FEATURE_FLAG가 활성화되어 있습니다. 파일은 수정하지 않았습니다."
+        fi
+    done <<<"$content"
+}
+
+inspect_environment_file_spec() {
+    local path_pattern="$1" optional="$2" environment_file file_content glob_output
+    local -a matched_files=()
+
+    if [[ "$path_pattern" == *'*'* || "$path_pattern" == *'?'* || "$path_pattern" == *'['* ]]; then
+        if ! glob_output="$(sudo bash -c 'compgen -G "$1" || true' _ "$path_pattern")"; then
+            fail "EnvironmentFile 와일드카드를 root 권한으로 검사할 수 없습니다: $path_pattern"
+        fi
+        while IFS= read -r environment_file; do
+            [[ -n "$environment_file" ]] && matched_files+=("$environment_file")
+        done <<<"$glob_output"
+    else
+        matched_files+=("$path_pattern")
+    fi
+
+    if [[ "${#matched_files[@]}" -eq 0 ]]; then
+        if [[ "$optional" -eq 1 ]]; then
+            printf '선택적 EnvironmentFile이 없어 건너뜁니다: %s\n' "$path_pattern"
+            return
+        fi
+        fail "필수 EnvironmentFile을 찾을 수 없습니다: $path_pattern"
+    fi
+
+    for environment_file in "${matched_files[@]}"; do
+        if ! file_content="$(sudo cat -- "$environment_file" 2>/dev/null)"; then
+            if [[ "$optional" -eq 1 ]]; then
+                printf '선택적 EnvironmentFile을 읽을 수 없어 systemd 의미에 따라 건너뜁니다: %s\n' "$environment_file"
+                continue
+            fi
+            fail "필수 EnvironmentFile을 읽기 전용으로 검사할 수 없습니다: $environment_file"
+        fi
+        inspect_environment_file_content "$environment_file" "$file_content"
+    done
+}
+
+inspect_environment_files() {
+    local index
+
+    CURRENT_STEP="systemd EnvironmentFile 읽기 전용 확인"
+    for index in "${!ENVIRONMENT_FILE_PATHS[@]}"; do
+        inspect_environment_file_spec \
+            "${ENVIRONMENT_FILE_PATHS[$index]}" \
+            "${ENVIRONMENT_FILE_OPTIONAL[$index]}"
+    done
 }
 
 verify_unit_active() {
@@ -245,7 +370,7 @@ verify_main_process() {
         fail "$SERVICE_NAME의 MainPID가 0이거나 올바르지 않습니다: ${MAIN_PID:-비어 있음}"
 
     CURRENT_STEP="실행 중 프로세스 기능 플래그 확인"
-    if ! process_environment="$(sudo cat "/proc/${MAIN_PID}/environ" | tr '\0' '\n')"; then
+    if ! process_environment="$(sudo cat -- "/proc/${MAIN_PID}/environ" | tr '\0' '\n')"; then
         fail "MainPID $MAIN_PID의 실행 환경을 읽을 수 없습니다."
     fi
     if flag_enabled_in_text "$process_environment"; then
@@ -333,7 +458,6 @@ main() {
     enter_repository
     verify_and_update_git
     verify_systemd_flag_disabled
-    verify_dotenv_flag_disabled
     restart_service_if_requested
     verify_main_process
     verify_http_endpoints
