@@ -1,0 +1,78 @@
+name: Minimize Alert v0.2 notifier diff
+
+on:
+  push:
+    branches:
+      - agent/alert-registration-v0-2
+
+permissions:
+  contents: write
+
+jobs:
+  minimize-and-test:
+    if: ${{ !contains(github.event.head_commit.message, '[v02-notifier-minimal]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/alert-registration-v0-2
+          fetch-depth: 0
+
+      - name: Restore base notifier and apply minimal replacements
+        shell: bash
+        run: |
+          git checkout d8c1f75b540b4bd8f721f6e69a85f72ce4e9d297 -- notifier/telegram_notifier.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("notifier/telegram_notifier.py")
+          raw = path.read_bytes()
+          replacements = [
+              (
+                  b"from typing import Dict, Any",
+                  b"from typing import Dict, Any, Mapping, Optional",
+              ),
+              (
+                  b"    def prepare_trade_alert_registration(text):",
+                  b"    def prepare_trade_alert_registration(text, *, plan=None, env=None):",
+              ),
+              (
+                  b"def send_telegram_message(text: str) -> Dict[str, Any]:",
+                  b"def send_telegram_message(text: str, *, registration_plan: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:",
+              ),
+              (
+                  b"    prepared = prepare_trade_alert_registration(text)",
+                  b"    prepared = prepare_trade_alert_registration(text, plan=registration_plan)",
+              ),
+          ]
+          for old, new in replacements:
+              count = raw.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match for {old!r}, found {count}")
+              raw = raw.replace(old, new, 1)
+          path.write_bytes(raw)
+          PY
+
+      - name: Run focused tests
+        shell: bash
+        run: |
+          python -m py_compile \
+            notifier/alert_ledger_registration.py \
+            notifier/telegram_notifier.py \
+            notifier/trade_alert.py \
+            scripts/scenario_ledger.py \
+            scripts/scenario_ledger_core_test.py \
+            scripts/alert_ledger_registration_test.py \
+            scripts/alert_ledger_registration_v02_test.py
+          python -W error::ResourceWarning scripts/scenario_ledger_core_test.py
+          python -W error::ResourceWarning scripts/alert_ledger_registration_test.py
+          python -W error::ResourceWarning scripts/alert_ledger_registration_v02_test.py
+
+      - name: Commit minimal notifier diff
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add notifier/telegram_notifier.py
+          git commit -m "Minimize notifier structured-plan patch [v02-notifier-minimal]"
+          git push origin HEAD:agent/alert-registration-v0-2
