@@ -9,6 +9,8 @@ readonly WATCH_TIMER_NAME="bitswipe-btc-watch.timer"
 readonly FEATURE_FLAG="SCENARIO_LEDGER_ALERT_REGISTRATION_ENABLED"
 readonly DATABASE_PATH="data/scenario_ledger.sqlite3"
 readonly FATAL_LOG_PATTERN='Traceback|SyntaxError|ImportError|ModuleNotFoundError|Failed to start'
+readonly ENV_PARSER_PATH="scripts/safe_deploy_verify_env.py"
+readonly ENV_PARSER_MISSING_EXIT=40
 
 CHECK_ONLY=0
 EXPECTED_COMMIT=""
@@ -258,25 +260,9 @@ parse_environment_file_directives() {
     done <<<"$unit_text"
 }
 
-inspect_environment_file_content() {
-    local environment_file="$1" content="$2" line trimmed
-
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        trimmed="$(trim_whitespace "$line")"
-        case "$trimmed" in
-            ""|\#*|\;*) continue ;;
-        esac
-        if [[ "$trimmed" == *"$FEATURE_FLAG"* && "$trimmed" == *'\' ]]; then
-            fail "$environment_file 안의 $FEATURE_FLAG 여러 줄 값은 안전하게 검사할 수 없습니다."
-        fi
-        if flag_enabled_in_text "$trimmed"; then
-            fail "$environment_file에서 $FEATURE_FLAG가 활성화되어 있습니다. 파일은 수정하지 않았습니다."
-        fi
-    done <<<"$content"
-}
-
 inspect_environment_file_spec() {
-    local path_pattern="$1" optional="$2" environment_file file_content glob_output
+    local path_pattern="$1" optional="$2" environment_file glob_output
+    local parser_output parser_status
     local -a matched_files=()
 
     if [[ "$path_pattern" == *'*'* || "$path_pattern" == *'?'* || "$path_pattern" == *'['* ]]; then
@@ -299,14 +285,20 @@ inspect_environment_file_spec() {
     fi
 
     for environment_file in "${matched_files[@]}"; do
-        if ! file_content="$(sudo cat -- "$environment_file" 2>/dev/null)"; then
-            if [[ "$optional" -eq 1 ]]; then
-                printf '선택적 EnvironmentFile을 읽을 수 없어 systemd 의미에 따라 건너뜁니다: %s\n' "$environment_file"
-                continue
+        if parser_output="$(sudo python3 -I -S -X utf8 "$ENV_PARSER_PATH" \
+            environment-file "$environment_file" 2>&1)"; then
+            continue
+        else
+            parser_status="$?"
+            if [[ "$parser_status" -eq "$ENV_PARSER_MISSING_EXIT" ]]; then
+                if [[ "$optional" -eq 1 ]]; then
+                    printf '선택적 EnvironmentFile이 없어 systemd 의미에 따라 건너뜁니다: %s\n' "$environment_file"
+                    continue
+                fi
+                fail "필수 EnvironmentFile을 읽기 전용으로 검사할 수 없습니다: $environment_file. ${parser_output:-자세한 오류 없음}"
             fi
-            fail "필수 EnvironmentFile을 읽기 전용으로 검사할 수 없습니다: $environment_file"
+            fail "$environment_file 검사가 안전하게 완료되지 않았습니다. 파일은 수정하지 않았습니다. ${parser_output:-자세한 오류 없음}"
         fi
-        inspect_environment_file_content "$environment_file" "$file_content"
     done
 }
 
@@ -357,7 +349,7 @@ restart_service_if_requested() {
 }
 
 verify_main_process() {
-    local process_environment
+    local parser_output
 
     CURRENT_STEP="서비스 active 상태 확인"
     verify_unit_active "$SERVICE_NAME" "BitSwipe 서비스"
@@ -370,11 +362,9 @@ verify_main_process() {
         fail "$SERVICE_NAME의 MainPID가 0이거나 올바르지 않습니다: ${MAIN_PID:-비어 있음}"
 
     CURRENT_STEP="실행 중 프로세스 기능 플래그 확인"
-    if ! process_environment="$(sudo cat -- "/proc/${MAIN_PID}/environ" | tr '\0' '\n')"; then
-        fail "MainPID $MAIN_PID의 실행 환경을 읽을 수 없습니다."
-    fi
-    if flag_enabled_in_text "$process_environment"; then
-        fail "실행 중인 프로세스에서 $FEATURE_FLAG가 활성화되어 있습니다."
+    if ! parser_output="$(sudo python3 -I -S -X utf8 "$ENV_PARSER_PATH" process-environment \
+        "/proc/${MAIN_PID}/environ" 2>&1)"; then
+        fail "MainPID $MAIN_PID의 실행 환경을 안전하게 검사할 수 없습니다. ${parser_output:-자세한 오류 없음}"
     fi
 }
 

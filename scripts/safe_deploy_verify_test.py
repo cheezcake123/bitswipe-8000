@@ -4,14 +4,21 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
 
+from safe_deploy_verify_env import (
+    inspect_environment_file_bytes,
+    inspect_process_environment_bytes,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "safe_deploy_verify.sh"
+ENV_PARSER = ROOT / "scripts" / "safe_deploy_verify_env.py"
 OLD_BASE_COMMIT = "8bd977a6347cb827378a05e3f28677a15eebf7f2"
 NEW_MERGED_COMMIT = "f1e2d3c4b5a697887766554433221100ffeeddcc"
 TARGET_BRANCH = "feature/candidate-validation-logs"
@@ -53,6 +60,13 @@ class SafeDeployVerifyTest(unittest.TestCase):
         self.command_log = self.test_root / "commands.log"
         self.mock_head = self.test_root / "mock-head.txt"
         self.mock_head.write_text(OLD_BASE_COMMIT, encoding="ascii", newline="\n")
+        self.mock_process_environment = self.test_root / "process-environ.bin"
+        self.mock_process_environment.write_bytes(
+            b"PATH=/usr/bin\0" + FEATURE_FLAG.encode("ascii") + b"=0\0"
+        )
+        test_scripts = self.test_root / "scripts"
+        test_scripts.mkdir()
+        shutil.copy2(ENV_PARSER, test_scripts / ENV_PARSER.name)
         self.database = self.test_root / "data" / "scenario_ledger.sqlite3"
         self.database.parent.mkdir()
         self.database.write_bytes(b"database-sentinel")
@@ -189,24 +203,36 @@ class SafeDeployVerifyTest(unittest.TestCase):
         )
         self.write_mock(
             "sudo",
-            f"""
-            if [[ "${{1:-}}" == "cat" ]]; then
+            """
+            if [[ "${1:-}" == "python3" ]]; then
                 shift
-                [[ "${{1:-}}" == "--" ]] && shift
-                requested_path="${{1:-}}"
-                if [[ "$requested_path" == /proc/*/environ ]]; then
-                    if [[ "${{MOCK_PROCESS_FLAG_ENABLED:-0}}" == "1" ]]; then
-                        printf 'PATH=/usr/bin\\0{FEATURE_FLAG}=true\\0'
+                python_options=()
+                while [[ "${1:-}" == "-I" || "${1:-}" == "-S" || "${1:-}" == "-X" ]]; do
+                    python_options+=("$1")
+                    if [[ "$1" == "-X" ]]; then
+                        python_options+=("$2")
+                        shift 2
                     else
-                        printf 'PATH=/usr/bin\\0{FEATURE_FLAG}=0\\0'
+                        shift
                     fi
-                    exit 0
+                done
+                parser_path="$1"
+                mode="$2"
+                target_path="$3"
+                if [[ "$mode" == "process-environment" && "$target_path" == /proc/*/environ ]]; then
+                    target_path="$MOCK_PROCESS_ENV_FILE"
                 fi
-                [[ "${{MOCK_CAT_FAIL_PATH:-}}" != "$requested_path" ]] || exit 1
-                /usr/bin/cat -- "$requested_path"
+
+                case "$(uname -s)" in
+                    MINGW*|MSYS*|CYGWIN*)
+                        parser_path="$(cygpath -wa "$parser_path")"
+                        target_path="$(cygpath -w "$target_path")"
+                        ;;
+                esac
+                "$REAL_PYTHON" "${python_options[@]}" "$parser_path" "$mode" "$target_path"
                 exit
             fi
-            if [[ "${{1:-}}" == "bash" ]]; then
+            if [[ "${1:-}" == "bash" ]]; then
                 shift
                 /usr/bin/bash "$@"
                 exit
@@ -246,6 +272,21 @@ class SafeDeployVerifyTest(unittest.TestCase):
 
     def run_script(self, *args: str, **overrides: str) -> subprocess.CompletedProcess[str]:
         initial_head = overrides.pop("MOCK_INITIAL_HEAD", OLD_BASE_COMMIT)
+        process_mode = overrides.pop("MOCK_PROCESS_ENV_MODE", "zero")
+        process_environments = {
+            "unset": b"PATH=/usr/bin\0",
+            "zero": b"PATH=/usr/bin\0" + FEATURE_FLAG.encode("ascii") + b"=0\0",
+            "true": b"PATH=/usr/bin\0" + FEATURE_FLAG.encode("ascii") + b"=true\0",
+            "newline_true": (
+                b"PATH=/usr/bin\0"
+                + FEATURE_FLAG.encode("ascii")
+                + b"=\n true \n\0"
+            ),
+            "malformed": b"PATH=/usr/bin\0not-an-assignment\0",
+        }
+        if process_mode not in process_environments:
+            raise ValueError(f"unknown process environment mode: {process_mode}")
+        self.mock_process_environment.write_bytes(process_environments[process_mode])
         self.mock_head.write_text(initial_head, encoding="ascii", newline="\n")
         env = os.environ.copy()
         env.update(
@@ -256,7 +297,10 @@ class SafeDeployVerifyTest(unittest.TestCase):
                 "TEST_ROOT": bash_path(self.test_root),
                 "MOCK_LOG": bash_path(self.command_log),
                 "MOCK_HEAD_FILE": bash_path(self.mock_head),
+                "MOCK_PROCESS_ENV_FILE": bash_path(self.mock_process_environment),
                 "NEW_MERGED_COMMIT": NEW_MERGED_COMMIT,
+                "PYTHONIOENCODING": "utf-8",
+                "REAL_PYTHON": Path(sys.executable).resolve().as_posix(),
             }
         )
         env.update(overrides)
@@ -416,15 +460,27 @@ class SafeDeployVerifyTest(unittest.TestCase):
         self.assert_sentinels_unchanged()
 
     def test_required_environment_file_inspection_failure_stops_before_restart(self):
-        required = self.test_root / "required.conf"
-        required.write_text("LOG_LEVEL=INFO\n", encoding="utf-8", newline="\n")
+        required = self.test_root / "missing-required.conf"
         result = self.run_with_expected(
             MOCK_UNIT_TEXT=f"[Service]\nEnvironmentFile={bash_path(required)}\n",
-            MOCK_CAT_FAIL_PATH=bash_path(required),
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("필수 EnvironmentFile", result.stderr)
         self.assertNotIn("systemctl restart", self.commands())
+        self.assert_sentinels_unchanged()
+
+    def test_optional_environment_file_only_skips_when_missing(self):
+        uninspectable = self.test_root / "not-an-environment-file"
+        uninspectable.mkdir()
+        result = self.run_with_expected(
+            MOCK_UNIT_TEXT=(
+                f"[Service]\nEnvironmentFile=-{bash_path(uninspectable)}\n"
+            )
+        )
+        self.assertNotEqual(result.returncode, 0)
+        commands = self.commands()
+        self.assertNotIn("systemctl restart", commands)
+        self.assert_no_prohibited_commands(commands)
         self.assert_sentinels_unchanged()
 
     def test_environment_file_enabled_flag_stops_before_restart(self):
@@ -440,6 +496,36 @@ class SafeDeployVerifyTest(unittest.TestCase):
         self.assertIn(FEATURE_FLAG, result.stderr)
         self.assertNotIn("systemctl restart", self.commands())
         self.assertEqual(environment_file.read_text(encoding="utf-8"), enabled)
+
+    def test_ambiguous_environment_file_target_assignments_fail_before_restart(self):
+        environment_file = self.test_root / "ambiguous.conf"
+        cases = {
+            "quoted_whitespace": f'{FEATURE_FLAG}=" true "\n',
+            "backslash_escaped": f"{FEATURE_FLAG}=\\true\n",
+            "double_quoted_multiline": f'{FEATURE_FLAG}="\ntrue"\n',
+            "single_quoted_multiline": f"{FEATURE_FLAG}='\ntrue'\n",
+        }
+
+        for name, content in cases.items():
+            with self.subTest(name=name):
+                self.command_log.unlink(missing_ok=True)
+                environment_file.write_text(content, encoding="utf-8", newline="\n")
+                optional_prefix = "-" if name == "quoted_whitespace" else ""
+                result = self.run_with_expected(
+                    MOCK_UNIT_TEXT=(
+                        f"[Service]\nEnvironmentFile={optional_prefix}"
+                        f"{bash_path(environment_file)}\n"
+                    )
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(FEATURE_FLAG, result.stderr)
+                commands = self.commands()
+                self.assertNotIn("systemctl restart", commands)
+                self.assert_no_prohibited_commands(commands)
+                self.assertEqual(
+                    environment_file.read_text(encoding="utf-8"), content
+                )
+                self.assert_sentinels_unchanged()
 
     def test_environment_file_reset_reads_only_effective_configuration(self):
         superseded = self.test_root / "superseded.conf"
@@ -459,12 +545,67 @@ class SafeDeployVerifyTest(unittest.TestCase):
         self.assertIn(effective.name, commands)
 
     def test_enabled_process_flag_fails_closed_after_service_restart(self):
-        result = self.run_with_expected(MOCK_PROCESS_FLAG_ENABLED="1")
+        result = self.run_with_expected(MOCK_PROCESS_ENV_MODE="true")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("실행 중인 프로세스", result.stderr)
         commands = self.commands()
         self.assertIn("sudo systemctl restart bitswipe.service", commands)
         self.assertNotIn("bitswipe-btc-watch.timer restart", commands)
+        self.assert_no_prohibited_commands(commands)
+        self.assert_sentinels_unchanged()
+
+    def test_newline_padded_true_in_process_environment_fails_closed(self):
+        result = self.run_with_expected(MOCK_PROCESS_ENV_MODE="newline_true")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("실행 중인 프로세스", result.stderr)
+        commands = self.commands()
+        self.assertIn("sudo systemctl restart bitswipe.service", commands)
+        self.assertNotIn("bitswipe-btc-watch.timer restart", commands)
+        self.assert_no_prohibited_commands(commands)
+        self.assert_sentinels_unchanged()
+
+    def test_unset_and_zero_process_environment_values_pass(self):
+        for mode in ("unset", "zero"):
+            with self.subTest(mode=mode):
+                self.command_log.unlink(missing_ok=True)
+                result = self.run_with_expected(MOCK_PROCESS_ENV_MODE=mode)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assert_no_prohibited_commands(self.commands())
+                self.assert_sentinels_unchanged()
+
+    def test_malformed_process_environment_fails_closed(self):
+        result = self.run_with_expected(MOCK_PROCESS_ENV_MODE="malformed")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("올바르지 않은 항목", result.stderr)
+        commands = self.commands()
+        self.assertNotIn("bitswipe-btc-watch.timer restart", commands)
+        self.assert_no_prohibited_commands(commands)
+        self.assert_sentinels_unchanged()
+
+    def test_read_only_byte_parsers_preserve_newlines_and_reject_ambiguity(self):
+        flag = FEATURE_FLAG.encode("ascii")
+        self.assertIsNone(inspect_environment_file_bytes(flag + b"=0\n"))
+        for value in (b"1", b" TRUE ", b"Yes", b"oN"):
+            with self.subTest(truthy_value=value):
+                self.assertIsNotNone(
+                    inspect_environment_file_bytes(flag + b"=" + value + b"\n")
+                )
+        self.assertIsNotNone(
+            inspect_environment_file_bytes(flag + b'= " true "\n')
+        )
+        self.assertIsNotNone(inspect_environment_file_bytes(flag + b"=\\true\n"))
+        self.assertIsNotNone(
+            inspect_environment_file_bytes(flag + b'="\ntrue"\n')
+        )
+        self.assertIsNone(inspect_process_environment_bytes(b"PATH=/usr/bin\0"))
+        self.assertIsNone(
+            inspect_process_environment_bytes(b"PATH=/usr/bin\0" + flag + b"=0\0")
+        )
+        self.assertIsNotNone(
+            inspect_process_environment_bytes(
+                b"PATH=/usr/bin\0" + flag + b"=\n true \n\0"
+            )
+        )
 
     def test_fatal_startup_log_fails_but_binance_401_does_not(self):
         normal = self.run_with_expected()
