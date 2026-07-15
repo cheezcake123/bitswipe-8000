@@ -172,7 +172,7 @@ verify_systemd_flag_disabled() {
         fail "systemd Environment 설정에서 $FEATURE_FLAG가 활성화되어 있습니다."
     fi
 
-    unit_text="$(systemctl cat "$SERVICE_NAME" --no-pager)" || \
+    unit_text="$(sudo systemctl cat "$SERVICE_NAME" --no-pager)" || \
         fail "$SERVICE_NAME의 unit/drop-in 설정을 읽을 수 없습니다."
     while IFS= read -r line; do
         trimmed="${line#"${line%%[![:space:]]*}"}"
