@@ -34,6 +34,13 @@ def find_bash() -> str | None:
     return None
 
 
+def bash_path(path: Path) -> str:
+    posix = path.resolve().as_posix()
+    if os.name == "nt" and len(posix) >= 3 and posix[1:3] == ":/":
+        return f"/{posix[0].lower()}{posix[2:]}"
+    return posix
+
+
 class SafeDeploySystemctlCatPermissionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -101,12 +108,12 @@ class SafeDeploySystemctlCatPermissionTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "SCRIPT_UNDER_TEST": SCRIPT.resolve().as_posix(),
-                    "COMMAND_LOG": command_log.resolve().as_posix(),
+                    "SCRIPT_UNDER_TEST": bash_path(SCRIPT),
+                    "COMMAND_LOG": bash_path(command_log),
                 }
             )
             result = subprocess.run(
-                [self.bash, harness.as_posix()],
+                [self.bash, bash_path(harness)],
                 cwd=ROOT,
                 env=env,
                 text=True,
