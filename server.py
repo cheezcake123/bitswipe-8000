@@ -20,6 +20,7 @@ import pandas as pd
 import websockets
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import config as runtime_config
@@ -122,6 +123,7 @@ _TF_TO_BYBIT  = {"5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}
 _BYBIT_TF_MAP = {v: k for k, v in _TF_TO_BYBIT.items()}
 MACRO_REFRESH_SECS = 60 * 60
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.mount("/assets", StaticFiles(directory=os.path.join(BASE_DIR, "static", "assets")), name="assets")
 LATEST_ANALYSIS_PATH   = os.path.join(BASE_DIR, "data", "latest_analysis.json")
 ANALYSIS_HISTORY_PATH  = os.path.join(BASE_DIR, "data", "analysis_history.jsonl")
 ANALYSIS_HISTORY_MAX   = 500   # JSONL 최대 보관 건수
