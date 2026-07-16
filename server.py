@@ -2806,6 +2806,13 @@ async def root():
     return HTMLResponse(_read_static_text(os.path.join("static", "index.html")))
 
 
+@app.get("/mobile-preview", include_in_schema=False)
+async def mobile_preview():
+    return HTMLResponse(
+        _read_static_text(os.path.join("static", "mobile-preview.html"))
+    )
+
+
 @app.get("/guide", include_in_schema=False)
 async def guide():
     return HTMLResponse(_read_static_text(os.path.join("static", "guide.html")))
