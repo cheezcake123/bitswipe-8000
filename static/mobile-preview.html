@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#081017">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+  <title>BitSwipe 모바일 미리보기</title>
+  <link rel="stylesheet" href="/assets/mobile-preview.css">
+</head>
+<body>
+  <a class="skip-link" href="#preview-main">본문으로 건너뛰기</a>
+
+  <svg class="svg-sprite" aria-hidden="true" focusable="false">
+    <symbol id="icon-logo" viewBox="0 0 24 24">
+      <path d="M12 2.5 19.5 6v8.7c0 3.6-3.1 5.9-7.5 6.8-4.4-.9-7.5-3.2-7.5-6.8V6L12 2.5Z"/>
+      <path d="m9.3 7.8 5.6 4.2-5.6 4.2V7.8Z"/>
+    </symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24">
+      <path d="m3 11 9-7 9 7v9H6v-9"/><path d="M9 20v-6h6v6"/>
+    </symbol>
+    <symbol id="icon-pulse" viewBox="0 0 24 24">
+      <path d="M3 12h4l2.2-6 4.1 12 2.4-6H21"/>
+    </symbol>
+    <symbol id="icon-note" viewBox="0 0 24 24">
+      <rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>
+    </symbol>
+    <symbol id="icon-chart" viewBox="0 0 24 24">
+      <path d="M5 20V10M12 20V4M19 20v-7M3 20h18"/>
+    </symbol>
+    <symbol id="icon-more" viewBox="0 0 24 24">
+      <circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>
+    </symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24">
+      <path d="m9 5 7 7-7 7"/>
+    </symbol>
+    <symbol id="icon-back" viewBox="0 0 24 24">
+      <path d="m15 18-6-6 6-6"/>
+    </symbol>
+    <symbol id="icon-filter" viewBox="0 0 24 24">
+      <path d="M4 5h16l-6 7v6l-4 2v-8L4 5Z"/>
+    </symbol>
+    <symbol id="icon-heart" viewBox="0 0 24 24">
+      <path d="M20.8 4.8a5.5 5.5 0 0 0-7.8 0L12 5.9l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.4a5.5 5.5 0 0 0 0-7.8Z"/>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>
+    </symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24">
+      <path d="M12 3 20 6v5c0 5-3.2 8.4-8 10-4.8-1.6-8-5-8-10V6l8-3Z"/><path d="m9 12 2 2 4-5"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 2.5 2.5L16 9"/>
+    </symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24">
+      <path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v4M12 17h.01"/>
+    </symbol>
+    <symbol id="icon-leaf" viewBox="0 0 24 24">
+      <path d="M20 4C11 4 5 8 5 15c0 2 1.5 4 4 4 7 0 10-8 11-15Z"/><path d="M4 21c3-5 7-8 12-11"/>
+    </symbol>
+  </svg>
+
+  <div id="demo-banner" class="demo-banner" role="status" hidden>
+    <svg aria-hidden="true"><use href="#icon-alert"></use></svg>
+    <span><strong>샘플 데이터</strong> · 화면 확인용이며 실시간 시장 정보가 아닙니다.</span>
+  </div>
+
+  <div class="preview-shell">
+    <main id="preview-main" class="preview-main" tabindex="-1">
+      <section id="home-screen" class="screen screen-home" data-screen="home" aria-labelledby="home-title">
+        <header class="brand-header">
+          <a class="brand" href="#home" aria-label="BitSwipe 모바일 미리보기 홈">
+            <span class="brand-mark"><svg aria-hidden="true"><use href="#icon-logo"></use></svg></span>
+            <span>BitSwipe</span>
+          </a>
+          <div class="header-actions">
+            <span id="connection-status" class="connection-pill" data-state="loading">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span class="connection-label">연결 중</span>
+            </span>
+            <a class="dashboard-link" href="/" aria-label="기존 BitSwipe 대시보드로 이동">기존 화면</a>
+          </div>
+        </header>
+
+        <div class="greeting-block">
+          <p class="eyebrow">오늘의 트레이딩 루틴</p>
+          <h1 id="home-title">오늘도 계획대로 가볼까요? <span aria-hidden="true">🌿</span></h1>
+          <p>감정이 아닌, 계획으로 수익을 만듭니다.</p>
+        </div>
+
+        <section class="panel focus-panel" aria-labelledby="focus-heading">
+          <div class="section-heading-row">
+            <div>
+              <p class="panel-kicker">오늘의 집중 시나리오</p>
+              <h2 id="focus-heading" class="sr-only">집중 시나리오</h2>
+            </div>
+            <span id="focus-status" class="state-badge state-neutral">불러오는 중</span>
+          </div>
+          <button id="focus-card" class="focus-card-button" type="button" disabled>
+            <span id="focus-symbol-icon" class="asset-token" aria-hidden="true">—</span>
+            <span class="focus-copy">
+              <strong id="focus-symbol">분석을 확인하고 있어요</strong>
+              <span id="focus-setup">잠시만 기다려 주세요.</span>
+              <small id="focus-next">사용 가능한 읽기 전용 데이터를 찾는 중입니다.</small>
+            </span>
+            <svg class="row-arrow" aria-hidden="true"><use href="#icon-arrow"></use></svg>
+          </button>
+        </section>
+
+        <aside class="warning-card" aria-labelledby="entry-warning-title">
+          <span class="warning-icon"><svg aria-hidden="true"><use href="#icon-alert"></use></svg></span>
+          <div>
+            <h2 id="entry-warning-title">계획 없는 진입 경고</h2>
+            <p>시나리오와 무효화 기준이 없다면 지금은 쉬어가세요. 이 화면은 교육용 읽기 전용 미리보기입니다.</p>
+          </div>
+        </aside>
+
+        <section class="panel guidance-panel" aria-labelledby="guidance-title">
+          <div class="section-heading-row">
+            <div>
+              <p class="panel-kicker">지금 할 일</p>
+              <h2 id="guidance-title">진입 전 세 가지 확인</h2>
+            </div>
+            <span id="home-check-progress" class="progress-copy">0 / 3</span>
+          </div>
+          <div class="guidance-list">
+            <button class="guidance-row" type="button" data-home-check="scenario" aria-pressed="false">
+              <span class="guidance-icon guidance-icon-blue"><svg aria-hidden="true"><use href="#icon-check"></use></svg></span>
+              <span><strong>시나리오 조건 확인</strong><small>진입·무효화 기준을 먼저 읽어보세요.</small></span>
+              <span class="local-check" aria-hidden="true"></span>
+            </button>
+            <button class="guidance-row" type="button" data-home-check="risk" aria-pressed="false">
+              <span class="guidance-icon guidance-icon-green"><svg aria-hidden="true"><use href="#icon-shield"></use></svg></span>
+              <span><strong>손절 기준 확인</strong><small>감당 가능한 손실 범위를 점검하세요.</small></span>
+              <span class="local-check" aria-hidden="true"></span>
+            </button>
+            <button class="guidance-row" type="button" data-home-check="emotion" aria-pressed="false">
+              <span class="guidance-icon guidance-icon-lime"><svg aria-hidden="true"><use href="#icon-heart"></use></svg></span>
+              <span><strong>감정 상태 확인</strong><small>조급함이나 복수 매매 신호가 없는지 살펴보세요.</small></span>
+              <span class="local-check" aria-hidden="true"></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel risk-summary" aria-labelledby="risk-summary-title">
+          <div class="section-heading-row">
+            <div>
+              <p class="panel-kicker">리스크 요약</p>
+              <h2 id="risk-summary-title">현재 시나리오 기준</h2>
+            </div>
+            <span class="data-origin">저장된 분석</span>
+          </div>
+          <dl class="metric-strip">
+            <div>
+              <dt>1회 리스크</dt>
+              <dd id="home-risk">데이터 없음</dd>
+            </div>
+            <div>
+              <dt>손익비</dt>
+              <dd id="home-rr">데이터 없음</dd>
+            </div>
+            <div>
+              <dt>손절 기준</dt>
+              <dd id="home-stop">계획 미설정</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="summary-tiles" aria-label="오늘의 요약">
+          <article>
+            <span class="tile-icon tile-teal"><svg aria-hidden="true"><use href="#icon-heart"></use></svg></span>
+            <small>불러온 분석</small>
+            <strong id="loaded-count">—</strong>
+          </article>
+          <article>
+            <span class="tile-icon tile-blue"><svg aria-hidden="true"><use href="#icon-pulse"></use></svg></span>
+            <small>계획 가능</small>
+            <strong id="planned-count">—</strong>
+          </article>
+          <article>
+            <span class="tile-icon tile-green"><svg aria-hidden="true"><use href="#icon-leaf"></use></svg></span>
+            <small>오늘의 원칙</small>
+            <strong>기다림 우선</strong>
+          </article>
+        </section>
+      </section>
+
+      <section id="signals-screen" class="screen" data-screen="signals" aria-labelledby="signals-title" hidden>
+        <header class="screen-header">
+          <div>
+            <p class="eyebrow">읽기 전용 분석</p>
+            <h1 id="signals-title">오늘의 시그널</h1>
+            <p id="signals-summary" class="screen-subtitle" aria-live="polite">분석을 불러오는 중입니다.</p>
+          </div>
+          <label class="filter-control" aria-label="시그널 상태 필터">
+            <svg aria-hidden="true"><use href="#icon-filter"></use></svg>
+            <select id="signal-filter">
+              <option value="all">전체</option>
+              <option value="planned">계획 가능</option>
+              <option value="watch">관찰</option>
+              <option value="no-trade">진입 보류</option>
+            </select>
+          </label>
+        </header>
+
+        <aside class="guidance-banner" aria-label="오늘의 안내">
+          <span class="banner-icon"><svg aria-hidden="true"><use href="#icon-leaf"></use></svg></span>
+          <div><strong>무리한 진입보다 기다림이 우선</strong><p>좋은 기회는 다시 옵니다. 조건이 갖춰질 때까지 관찰하세요.</p></div>
+        </aside>
+
+        <div id="signals-state" class="content-state" role="status" aria-live="polite">
+          <span class="loading-orbit" aria-hidden="true"></span>
+          <strong>저장된 분석을 확인하고 있어요</strong>
+          <p>한 항목을 불러오지 못해도 나머지는 계속 표시합니다.</p>
+        </div>
+        <div id="signal-list" class="signal-list" role="list" aria-label="시그널 목록"></div>
+      </section>
+
+      <section id="detail-screen" class="screen" data-screen="detail" aria-labelledby="detail-title" hidden>
+        <header class="detail-topbar">
+          <button id="detail-back" class="icon-button" type="button" aria-label="이전 화면으로 돌아가기">
+            <svg aria-hidden="true"><use href="#icon-back"></use></svg>
+          </button>
+          <h1 id="detail-title">시나리오 상세</h1>
+          <button class="icon-button" type="button" aria-label="추가 메뉴, 준비 중" disabled>
+            <svg aria-hidden="true"><use href="#icon-more"></use></svg>
+          </button>
+        </header>
+
+        <article class="panel identity-card">
+          <span id="detail-token" class="asset-token asset-token-large" aria-hidden="true">—</span>
+          <div class="identity-copy">
+            <div><strong id="detail-symbol">시나리오 없음</strong><span id="detail-state" class="state-badge state-neutral">관찰</span></div>
+            <p id="detail-setup">목록에서 시나리오를 선택해 주세요.</p>
+          </div>
+          <button id="favorite-button" class="icon-button favorite-button" type="button" aria-label="관심 시나리오로 표시" aria-pressed="false">
+            <svg aria-hidden="true"><use href="#icon-heart"></use></svg>
+          </button>
+        </article>
+
+        <aside id="action-banner" class="action-banner" aria-labelledby="action-banner-title">
+          <span class="action-icon"><svg aria-hidden="true"><use href="#icon-clock"></use></svg></span>
+          <div>
+            <p>지금 해야 할 일</p>
+            <h2 id="action-banner-title">조건 충족 전까지 대기</h2>
+            <span id="action-banner-copy">기준을 충족할 때만 계획을 검토하세요.</span>
+          </div>
+        </aside>
+
+        <section class="panel detail-plan" aria-labelledby="plan-title">
+          <div class="section-heading-row">
+            <div>
+              <p class="panel-kicker">내 계획</p>
+              <h2 id="plan-title">시나리오 지표</h2>
+            </div>
+            <span id="detail-updated" class="data-origin">시각 미확인</span>
+          </div>
+          <dl class="metric-grid">
+            <div><dt>진입 구간</dt><dd id="detail-entry" class="metric-valid">데이터 없음</dd></div>
+            <div><dt>손절</dt><dd id="detail-stop" class="metric-risk">계획 미설정</dd></div>
+            <div><dt>목표</dt><dd id="detail-target" class="metric-valid">계획 미설정</dd></div>
+            <div><dt>손익비</dt><dd id="detail-rr" class="metric-neutral">데이터 없음</dd></div>
+          </dl>
+        </section>
+
+        <section class="detail-columns">
+          <fieldset class="panel checklist-panel">
+            <legend>시나리오 체크리스트</legend>
+            <p>체크 상태는 이 브라우저에만 저장됩니다.</p>
+            <label><span><svg aria-hidden="true"><use href="#icon-chart"></use></svg>상위 추세 확인 (4H)</span><input type="checkbox" data-checklist="trend"></label>
+            <label><span><svg aria-hidden="true"><use href="#icon-pulse"></use></svg>진입 구간 도달</span><input type="checkbox" data-checklist="entry"></label>
+            <label><span><svg aria-hidden="true"><use href="#icon-chart"></use></svg>거래량 확인</span><input type="checkbox" data-checklist="volume"></label>
+            <label><span><svg aria-hidden="true"><use href="#icon-shield"></use></svg>손절 설정</span><input type="checkbox" data-checklist="stop"></label>
+            <label><span><svg aria-hidden="true"><use href="#icon-heart"></use></svg>감정 상태 안정</span><input type="checkbox" data-checklist="emotion"></label>
+          </fieldset>
+
+          <div class="detail-side">
+            <aside class="risk-warning" aria-labelledby="risk-warning-title">
+              <div class="risk-warning-heading"><svg aria-hidden="true"><use href="#icon-alert"></use></svg><h2 id="risk-warning-title">리스크 안내</h2></div>
+              <ul>
+                <li>연속 손실 뒤에는 충분히 쉬어가세요.</li>
+                <li>규칙이 충족되지 않으면 거래하지 않습니다.</li>
+                <li>손절 기준을 더 멀리 옮기지 마세요.</li>
+              </ul>
+            </aside>
+
+            <section class="panel notes-panel" aria-labelledby="notes-title">
+              <h2 id="notes-title">규칙 &amp; 메모</h2>
+              <ul id="scenario-notes"><li>시나리오를 선택하면 확인 가능한 정보가 표시됩니다.</li></ul>
+              <label for="local-memo">이 기기에만 저장</label>
+              <textarea id="local-memo" rows="3" maxlength="300" placeholder="관찰 포인트를 짧게 적어두세요."></textarea>
+              <small id="memo-status" aria-live="polite">서버로 전송되지 않습니다.</small>
+            </section>
+          </div>
+        </section>
+
+        <button id="complete-checklist" class="primary-button" type="button">
+          <svg aria-hidden="true"><use href="#icon-check"></use></svg>
+          체크 완료하고 관찰 계속하기
+        </button>
+        <p id="detail-feedback" class="local-feedback" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="모바일 미리보기 탐색">
+      <button type="button" data-route="home" aria-current="page">
+        <svg aria-hidden="true"><use href="#icon-home"></use></svg><span>홈</span>
+      </button>
+      <button type="button" data-route="signals">
+        <svg aria-hidden="true"><use href="#icon-pulse"></use></svg><span>시그널</span>
+      </button>
+      <button type="button" disabled aria-label="노트, 준비 중">
+        <svg aria-hidden="true"><use href="#icon-note"></use></svg><span>노트</span><small>준비 중</small>
+      </button>
+      <button type="button" disabled aria-label="성과, 준비 중">
+        <svg aria-hidden="true"><use href="#icon-chart"></use></svg><span>성과</span><small>준비 중</small>
+      </button>
+      <button type="button" disabled aria-label="더보기, 준비 중">
+        <svg aria-hidden="true"><use href="#icon-more"></use></svg><span>더보기</span><small>준비 중</small>
+      </button>
+    </nav>
+  </div>
+
+  <template id="signal-card-template">
+    <article class="signal-card panel" role="listitem">
+      <div class="signal-card-top">
+        <span class="asset-token signal-token" aria-hidden="true">—</span>
+        <div class="signal-identity">
+          <strong class="signal-symbol">—</strong>
+          <span class="signal-setup">설정 정보 없음</span>
+        </div>
+        <span class="state-badge signal-state state-neutral">관찰</span>
+      </div>
+      <dl class="signal-metrics">
+        <div><dt>진입 구간</dt><dd data-field="entry">데이터 없음</dd></div>
+        <div><dt>손절</dt><dd data-field="stop">계획 미설정</dd></div>
+        <div><dt>목표</dt><dd data-field="target">계획 미설정</dd></div>
+        <div><dt>손익비</dt><dd data-field="rr">데이터 없음</dd></div>
+      </dl>
+      <div class="signal-meta"><span class="confidence-copy"></span><time class="updated-copy">시각 미확인</time></div>
+      <button class="scenario-button" type="button">
+        시나리오 보기 <svg aria-hidden="true"><use href="#icon-arrow"></use></svg>
+      </button>
+    </article>
+  </template>
+
+  <noscript><p class="noscript-message">이 미리보기의 화면 전환과 로컬 체크리스트를 사용하려면 JavaScript를 켜 주세요.</p></noscript>
+  <script src="/assets/mobile-preview.js" defer></script>
+</body>
+</html>
