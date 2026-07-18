@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#f4f5f7">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+  <title>Decision Journal</title>
+  <link rel="stylesheet" href="/assets/decision-journal-preview.css">
+</head>
+<body>
+  <a class="skip-link" href="#journal-main">본문으로 건너뛰기</a>
+  <div id="demo-banner" class="demo-banner" role="status" hidden>
+    <strong>샘플 데이터</strong>
+    <span>화면 검토용이며 라이브 API를 사용하지 않습니다.</span>
+  </div>
+
+  <div class="app-shell">
+    <aside class="side-rail" aria-label="Decision Layers 탐색">
+      <a class="brand" href="/assets/decision-preview.html">
+        <span class="brand-mark" aria-hidden="true">D</span>
+        <span><strong data-product-name>Decision Layers</strong><small data-product-tagline>Command Center</small></span>
+      </a>
+      <nav class="primary-nav">
+        <a href="/assets/decision-preview.html#market">Market</a>
+        <a href="/assets/decision-preview.html#analysis">Analysis</a>
+        <a href="/assets/decision-preview.html#setups">Setups</a>
+        <a href="/assets/decision-journal-preview.html" aria-current="page">Journal</a>
+      </nav>
+      <div class="rail-note">
+        <strong>읽기 전용 회고</strong>
+        <p>체결·손익을 추정하지 않습니다. 저장된 분석 기록만 재구성합니다.</p>
+      </div>
+    </aside>
+
+    <main id="journal-main" class="journal-main" tabindex="-1">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">DECISION JOURNAL</p>
+          <h1>결과보다 먼저, 판단 과정을 복기합니다.</h1>
+          <p class="lede">어떤 시나리오가 있었고, 당시 근거·위험·행동 상태가 무엇이었는지 다시 봅니다. Binance 체결 매칭이 없으므로 실제 승패와 수익률은 계산하지 않습니다.</p>
+        </div>
+        <a class="back-link" href="/assets/decision-preview.html">Decision 화면으로 돌아가기</a>
+      </header>
+
+      <section class="summary-grid" aria-label="저널 요약">
+        <article class="metric-card"><span>분석 기록</span><strong id="metric-total">—</strong><small>현재 불러온 기록</small></article>
+        <article class="metric-card"><span>A / B+ 시나리오</span><strong id="metric-quality">—</strong><small>품질 기준 통과 기록</small></article>
+        <article class="metric-card"><span>WAIT / WATCH</span><strong id="metric-wait">—</strong><small>실행보다 대기가 우선이었던 기록</small></article>
+        <article class="metric-card"><span>결과 확인 가능</span><strong>0</strong><small>체결 매칭 미구현</small></article>
+      </section>
+
+      <section class="reflection-panel panel" aria-labelledby="reflection-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">BEHAVIOR REFLECTION</p><h2 id="reflection-title">이번 기록에서 볼 것</h2></div>
+          <span id="source-state" class="state-pill" data-state="loading">불러오는 중</span>
+        </div>
+        <div class="reflection-grid">
+          <article><strong>1. 기다릴 수 있었나?</strong><p id="reflection-wait">기록을 분석하고 있습니다.</p></article>
+          <article><strong>2. 품질과 위험을 분리했나?</strong><p id="reflection-risk">Scenario Quality와 Risk Guard를 따로 복기합니다.</p></article>
+          <article><strong>3. 무효화 조건이 있었나?</strong><p id="reflection-invalidation">진입보다 먼저 취소 조건이 있었는지 확인합니다.</p></article>
+        </div>
+      </section>
+
+      <section class="panel controls-panel" aria-labelledby="records-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">ANALYSIS HISTORY</p><h2 id="records-title">판단 기록</h2></div>
+          <span class="read-only">읽기 전용</span>
+        </div>
+        <div class="filter-row" role="group" aria-label="저널 필터">
+          <button type="button" data-filter="all" aria-pressed="true">전체</button>
+          <button type="button" data-filter="quality">A / B+</button>
+          <button type="button" data-filter="wait">WAIT / WATCH</button>
+          <button type="button" data-filter="actionable">PREPARE / READY</button>
+        </div>
+        <div id="records-state" class="content-state" role="status" aria-live="polite">
+          <strong>분석 기록을 확인하고 있습니다.</strong>
+          <p>한 소스가 실패해도 확인 가능한 기록만 표시합니다.</p>
+        </div>
+        <div id="journal-list" class="journal-list" role="list" aria-label="판단 기록 목록"></div>
+      </section>
+
+      <aside class="honesty-note">
+        <strong>이 화면이 아직 말하지 않는 것</strong>
+        <p>실제 진입 여부, 체결 가격, 청산 결과, 실현 손익, 승률은 현재 데이터 계약에 없습니다. 따라서 결과를 추정하거나 성공·실패로 분류하지 않습니다.</p>
+      </aside>
+    </main>
+
+    <aside class="context-rail" aria-label="저널 원칙">
+      <section class="panel compact-panel"><p class="eyebrow">JOURNAL RULE</p><h2>좋은 매매 = 좋은 결과?</h2><p>아닙니다. 이 저널은 결과보다 당시의 근거, 위험, 무효화 조건과 행동 상태를 먼저 봅니다.</p></section>
+      <section class="panel compact-panel"><p class="eyebrow">DATA BOUNDARY</p><h2>공개 분석 기록만</h2><p>계좌 잔고·포지션·체결 데이터를 읽거나 저장하지 않습니다.</p></section>
+    </aside>
+  </div>
+
+  <template id="journal-item-template">
+    <article class="journal-card" role="listitem">
+      <div class="journal-topline">
+        <div><strong class="journal-pair">—</strong><small class="journal-time">시각 미확인</small></div>
+        <div class="badge-row"><span class="badge journal-grade">—</span><span class="badge journal-risk">—</span><span class="badge journal-action">WAIT</span></div>
+      </div>
+      <div class="journal-body">
+        <div><span>당시 관점</span><strong class="journal-direction">방향 미확인</strong></div>
+        <div><span>Scenario Quality</span><strong class="journal-quality">—</strong></div>
+        <div><span>결과</span><strong>미확인</strong></div>
+      </div>
+      <div class="journal-review">
+        <p><strong>근거</strong><span class="journal-evidence">확인 가능한 근거 없음</span></p>
+        <p><strong>무효화</strong><span class="journal-invalidation">명시된 조건 없음</span></p>
+        <p><strong>복기 질문</strong><span class="journal-question">이 상황에서 행동하지 않는 선택도 지킬 수 있었는가?</span></p>
+      </div>
+    </article>
+  </template>
+
+  <noscript><p class="noscript-message">이 읽기 전용 저널에는 JavaScript가 필요합니다.</p></noscript>
+  <script src="/assets/mobile-preview-foundation.js" defer></script>
+  <script src="/assets/decision-journal-preview.js" defer></script>
+</body>
+</html>
