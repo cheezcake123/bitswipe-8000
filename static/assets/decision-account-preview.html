@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#f4f5f7">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+  <title>Private Account Context</title>
+  <link rel="stylesheet" href="/assets/decision-account-preview.css">
+</head>
+<body>
+  <a class="skip-link" href="#account-main">본문으로 건너뛰기</a>
+
+  <div id="account-demo-banner" class="demo-banner" role="status" hidden>
+    <strong>샘플 데이터</strong>
+    <span>화면 검토용이며 라이브 API와 계좌 스트림을 사용하지 않습니다.</span>
+  </div>
+
+  <div class="owner-warning" role="note">
+    <strong>OWNER PREVIEW ONLY</strong>
+    <span>이 단계에는 인증이 아직 없습니다. 외부 공개 전에는 반드시 백엔드 인증으로 이 화면과 계좌 스트림을 보호해야 합니다.</span>
+  </div>
+
+  <div class="account-app">
+    <aside class="account-sidebar" aria-label="Private Account 탐색">
+      <a class="brand-lockup" href="/assets/decision-preview.html" data-product-home-label>
+        <span class="brand-mark" aria-hidden="true">◈</span>
+        <span><strong data-product-name></strong><small>Private Context</small></span>
+      </a>
+      <nav class="private-nav" aria-label="Private Account">
+        <span aria-current="page"><b>01</b>Account Context</span>
+        <a href="/assets/decision-preview.html#market"><b>↗</b>Public Decision</a>
+      </nav>
+      <div class="sidebar-note">
+        <strong>Private means protected</strong>
+        <p>프런트엔드에서 숨기는 것만으로는 보호가 아닙니다. Public Beta 전에 서버 인증이 필요합니다.</p>
+      </div>
+    </aside>
+
+    <main id="account-main" class="account-main" tabindex="-1" data-capability-scope="private">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">OWNER-ONLY PERSONAL CONTEXT</p>
+          <h1>Account Context</h1>
+          <p class="lede">계좌 손익보다 현재 노출과 시나리오 연결 상태를 먼저 확인합니다.</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="account-connection" class="status-pill" data-state="loading" role="status" aria-live="polite">연결 준비 중</span>
+          <button id="privacy-toggle" type="button" aria-pressed="true">민감 정보 표시</button>
+        </div>
+      </header>
+
+      <section class="summary-grid" aria-label="계좌 요약" aria-live="polite">
+        <article><span>Account equity</span><strong id="account-equity" data-private="true">••••••</strong><small>계좌 자산</small></article>
+        <article><span>Available</span><strong id="account-available" data-private="true">••••••</strong><small>사용 가능 잔고</small></article>
+        <article><span>Today PnL</span><strong id="account-pnl" data-private="true">••••••</strong><small>성과보다 노출을 먼저 확인</small></article>
+        <article><span>Open positions</span><strong id="account-position-count">—</strong><small>현재 열린 포지션</small></article>
+      </section>
+
+      <section class="account-grid">
+        <div class="primary-column">
+          <article class="panel exposure-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">CURRENT EXPOSURE</p><h2>현재 노출</h2></div>
+              <span class="read-only">읽기 전용</span>
+            </div>
+            <dl class="exposure-grid">
+              <div><dt>지갑 잔고</dt><dd id="account-wallet" data-private="true">••••••</dd></div>
+              <div><dt>총 명목가</dt><dd id="account-notional" data-private="true">••••••</dd></div>
+              <div><dt>유효 레버리지</dt><dd id="account-effective-leverage">—</dd></div>
+              <div><dt>설정 레버리지</dt><dd id="account-configured-leverage">—</dd></div>
+              <div class="wide"><dt>레버리지 상태</dt><dd id="account-leverage-display">포지션 데이터를 기다리고 있습니다.</dd></div>
+            </dl>
+            <p id="account-updated" class="muted">계좌 스냅샷을 기다리고 있습니다.</p>
+          </article>
+
+          <article class="panel positions-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">POSITION → SCENARIO</p><h2>오픈 포지션과 최신 시나리오</h2></div>
+              <span id="position-match-summary" class="read-only">연결 대기</span>
+            </div>
+            <p class="panel-copy">포지션의 방향을 정당화하지 않습니다. 동일 심볼의 최신 분석을 연결해 현재 시나리오가 유지되는지 별도로 보여 줍니다.</p>
+            <div id="positions-state" class="content-state" role="status" aria-live="polite">
+              <strong>계좌 데이터를 기다리고 있습니다.</strong>
+              <p>계좌 스트림이 연결되면 현재 포지션을 표시합니다.</p>
+            </div>
+            <div id="positions-list" class="positions-list" role="list"></div>
+          </article>
+        </div>
+
+        <aside class="context-column">
+          <article class="panel compact-panel">
+            <p class="eyebrow">DECISION RULE</p>
+            <h2>PnL은 근거가 아닙니다.</h2>
+            <p>수익 중인 포지션도 시나리오가 무효화될 수 있고, 손실 중인 포지션도 계획 밖 물타기의 근거가 될 수 없습니다.</p>
+          </article>
+          <article class="panel compact-panel">
+            <p class="eyebrow">PRIVACY</p>
+            <h2>기본값은 숨김</h2>
+            <p>잔고와 손익은 페이지를 열 때마다 숨김으로 시작합니다. 이 화면은 계좌 스냅샷을 브라우저 저장소에 기록하지 않습니다.</p>
+          </article>
+          <article class="panel compact-panel warning-panel">
+            <p class="eyebrow">AUTH BOUNDARY</p>
+            <h2>아직 인증되지 않음</h2>
+            <p>현재는 소유자용 프리뷰 구조만 분리한 단계입니다. 인터넷 공개 전에 `/api/account-stream`과 이 페이지를 서버 측에서 보호해야 합니다.</p>
+          </article>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <template id="position-template">
+    <article class="position-card" role="listitem">
+      <div class="position-topline">
+        <div><strong class="position-symbol">—</strong><small class="position-side">방향 미확인</small></div>
+        <span class="position-action">WAIT</span>
+      </div>
+      <div class="position-metrics">
+        <div><span>진입가</span><strong data-position="entry">—</strong></div>
+        <div><span>마크가</span><strong data-position="mark">—</strong></div>
+        <div><span>미실현 손익</span><strong data-position="pnl">••••••</strong></div>
+        <div><span>레버리지</span><strong data-position="leverage">—</strong></div>
+        <div><span>청산가</span><strong data-position="liquidation">—</strong></div>
+        <div><span>증거금</span><strong data-position="margin">••••••</strong></div>
+      </div>
+      <div class="scenario-link">
+        <div class="scenario-heading">
+          <div><span>연결된 최신 시나리오</span><strong class="scenario-title">시나리오 연결 없음</strong></div>
+          <div class="badge-row"><span class="badge scenario-grade">Grade —</span><span class="badge scenario-quality">Quality —</span><span class="badge scenario-risk">Risk —</span></div>
+        </div>
+        <dl class="scenario-grid">
+          <div><dt>시나리오 방향</dt><dd class="scenario-direction">—</dd></div>
+          <div><dt>TP</dt><dd data-position="tp">—</dd></div>
+          <div><dt>SL</dt><dd data-position="sl">—</dd></div>
+          <div class="wide"><dt>무효화 조건</dt><dd class="scenario-invalidation">연결된 분석 없음</dd></div>
+        </dl>
+      </div>
+    </article>
+  </template>
+
+  <noscript><p class="noscript-message">이 소유자용 읽기 전용 프리뷰에는 JavaScript가 필요합니다.</p></noscript>
+  <script src="/assets/mobile-preview-foundation.js" defer></script>
+  <script src="/assets/decision-account-preview.js" defer></script>
+</body>
+</html>

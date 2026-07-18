@@ -24,10 +24,14 @@ DECISION_JS_PATH = ROOT / "static" / "assets" / "decision-preview.js"
 JOURNAL_HTML_PATH = ROOT / "static" / "assets" / "decision-journal-preview.html"
 JOURNAL_CSS_PATH = ROOT / "static" / "assets" / "decision-journal-preview.css"
 JOURNAL_JS_PATH = ROOT / "static" / "assets" / "decision-journal-preview.js"
+ACCOUNT_HTML_PATH = ROOT / "static" / "assets" / "decision-account-preview.html"
+ACCOUNT_CSS_PATH = ROOT / "static" / "assets" / "decision-account-preview.css"
+ACCOUNT_JS_PATH = ROOT / "static" / "assets" / "decision-account-preview.js"
 
 BASE_COMMIT = "6d39043ab121bdbd2900dffe481c86f167946d8c"
 JOURNAL_BASE_COMMIT = "0303280a9694f9fd71a90a0dd11a5bd73aac556d"
 PUBLIC_SHELL_BASE_COMMIT = "39b106573cb91961ea87947cc8f37ff151ef741e"
+PERSONAL_CONTEXT_BASE_COMMIT = "0ee1f51d23e7d4c754aea9e65248ac7d6dc15384"
 ALLOWED_DIFFS = {
     "static/mobile-preview.html",
     "static/assets/mobile-preview.css",
@@ -40,6 +44,9 @@ ALLOWED_DIFFS = {
     "static/assets/decision-journal-preview.html",
     "static/assets/decision-journal-preview.css",
     "static/assets/decision-journal-preview.js",
+    "static/assets/decision-account-preview.html",
+    "static/assets/decision-account-preview.css",
+    "static/assets/decision-account-preview.js",
     "scripts/mobile_preview_test.py",
 }
 
@@ -101,6 +108,9 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
         cls.journal_html_text = JOURNAL_HTML_PATH.read_text(encoding="utf-8")
         cls.journal_css_text = JOURNAL_CSS_PATH.read_text(encoding="utf-8")
         cls.journal_js_text = JOURNAL_JS_PATH.read_text(encoding="utf-8")
+        cls.account_html_text = ACCOUNT_HTML_PATH.read_text(encoding="utf-8")
+        cls.account_css_text = ACCOUNT_CSS_PATH.read_text(encoding="utf-8")
+        cls.account_js_text = ACCOUNT_JS_PATH.read_text(encoding="utf-8")
 
         cls.html = PreviewHTMLParser()
         cls.html.feed(cls.html_text)
@@ -111,6 +121,9 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
         cls.journal_html = PreviewHTMLParser()
         cls.journal_html.feed(cls.journal_html_text)
         cls.journal_page_text = " ".join(cls.journal_html.text)
+        cls.account_html = PreviewHTMLParser()
+        cls.account_html.feed(cls.account_html_text)
+        cls.account_page_text = " ".join(cls.account_html.text)
         cls.server_tree = ast.parse(cls.server_text)
 
     def test_01_only_approved_frontend_files_differ_from_exact_mobile_base(self) -> None:
@@ -122,44 +135,44 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
             worktree_blob = git_output("hash-object", relative_path).strip()
             self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed from mobile base")
 
-    def test_02_journal_v3_and_public_shell_v4_are_exactly_isolated(self) -> None:
+    def test_02_version_boundaries_remain_exactly_isolated(self) -> None:
         self.assertEqual(git_output("rev-parse", JOURNAL_BASE_COMMIT).strip().decode(), JOURNAL_BASE_COMMIT)
-        changed = set(git_output("diff", "--name-only", JOURNAL_BASE_COMMIT, "--").decode().splitlines())
+        journal_changed = set(git_output("diff", "--name-only", JOURNAL_BASE_COMMIT, "--").decode().splitlines())
         self.assertEqual(
-            changed,
+            journal_changed,
             {
                 "static/assets/decision-journal-preview.html",
                 "static/assets/decision-journal-preview.css",
                 "static/assets/decision-journal-preview.js",
                 "static/assets/mobile-preview-foundation.js",
+                "static/assets/decision-account-preview.html",
+                "static/assets/decision-account-preview.css",
+                "static/assets/decision-account-preview.js",
                 "scripts/mobile_preview_test.py",
             },
         )
-        for relative_path in (
-            "server.py",
-            "static/mobile-preview.html",
-            "static/assets/mobile-preview.css",
-            "static/assets/mobile-preview.js",
-            "static/assets/mobile-preview-macro-adapter.js",
-            "static/assets/decision-preview.html",
-            "static/assets/decision-preview.css",
-            "static/assets/decision-preview.js",
-        ):
-            base_blob = git_output("rev-parse", f"{JOURNAL_BASE_COMMIT}:{relative_path}").strip()
-            worktree_blob = git_output("hash-object", relative_path).strip()
-            self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed after Journal base")
 
-        self.assertEqual(
-            git_output("rev-parse", PUBLIC_SHELL_BASE_COMMIT).strip().decode(),
-            PUBLIC_SHELL_BASE_COMMIT,
-        )
-        shell_changed = set(
-            git_output("diff", "--name-only", PUBLIC_SHELL_BASE_COMMIT, "--").decode().splitlines()
-        )
+        self.assertEqual(git_output("rev-parse", PUBLIC_SHELL_BASE_COMMIT).strip().decode(), PUBLIC_SHELL_BASE_COMMIT)
+        shell_changed = set(git_output("diff", "--name-only", PUBLIC_SHELL_BASE_COMMIT, "--").decode().splitlines())
         self.assertEqual(
             shell_changed,
             {
                 "static/assets/mobile-preview-foundation.js",
+                "static/assets/decision-account-preview.html",
+                "static/assets/decision-account-preview.css",
+                "static/assets/decision-account-preview.js",
+                "scripts/mobile_preview_test.py",
+            },
+        )
+
+        self.assertEqual(git_output("rev-parse", PERSONAL_CONTEXT_BASE_COMMIT).strip().decode(), PERSONAL_CONTEXT_BASE_COMMIT)
+        personal_changed = set(git_output("diff", "--name-only", PERSONAL_CONTEXT_BASE_COMMIT, "--").decode().splitlines())
+        self.assertEqual(
+            personal_changed,
+            {
+                "static/assets/decision-account-preview.html",
+                "static/assets/decision-account-preview.css",
+                "static/assets/decision-account-preview.js",
                 "scripts/mobile_preview_test.py",
             },
         )
@@ -168,6 +181,7 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
             "static/mobile-preview.html",
             "static/assets/mobile-preview.css",
             "static/assets/mobile-preview.js",
+            "static/assets/mobile-preview-foundation.js",
             "static/assets/mobile-preview-macro-adapter.js",
             "static/assets/decision-preview.html",
             "static/assets/decision-preview.css",
@@ -176,9 +190,9 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
             "static/assets/decision-journal-preview.css",
             "static/assets/decision-journal-preview.js",
         ):
-            base_blob = git_output("rev-parse", f"{PUBLIC_SHELL_BASE_COMMIT}:{relative_path}").strip()
+            base_blob = git_output("rev-parse", f"{PERSONAL_CONTEXT_BASE_COMMIT}:{relative_path}").strip()
             worktree_blob = git_output("hash-object", relative_path).strip()
-            self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed in Public Shell v4")
+            self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed in Personal Context v1")
 
     def test_03_root_and_mobile_preview_routes_remain_isolated(self) -> None:
         async_functions = [node for node in self.server_tree.body if isinstance(node, ast.AsyncFunctionDef)]
@@ -333,11 +347,19 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
         self.assertIn("zeroIsValue: true", self.foundation_text)
 
     def test_19_dynamic_content_avoids_inner_html(self) -> None:
-        for text in (self.js_text, self.foundation_text, self.macro_adapter_text, self.decision_js_text, self.journal_js_text):
+        for text in (
+            self.js_text,
+            self.foundation_text,
+            self.macro_adapter_text,
+            self.decision_js_text,
+            self.journal_js_text,
+            self.account_js_text,
+        ):
             self.assertNotIn("innerHTML", text)
         self.assertIn("replaceChildren", self.js_text)
         self.assertIn("replaceChildren", self.decision_js_text)
         self.assertIn("replaceChildren", self.journal_js_text)
+        self.assertIn("replaceChildren", self.account_js_text)
 
     def test_20_decision_preview_uses_local_assets_and_view_model(self) -> None:
         links = self.decision_html.attrs_for("link")
@@ -439,6 +461,91 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
         self.assertRegex(self.journal_css_text, r"@media\s*\(prefers-reduced-motion:\s*reduce\)")
         viewport = next(item for item in self.journal_html.attrs_for("meta") if item.get("name") == "viewport")
         self.assertNotIn("user-scalable=no", viewport.get("content", ""))
+
+    def test_31_private_account_preview_uses_local_assets_and_private_scope(self) -> None:
+        links = self.account_html.attrs_for("link")
+        scripts = self.account_html.attrs_for("script")
+        self.assertEqual([item.get("href") for item in links if item.get("rel") == "stylesheet"], ["/assets/decision-account-preview.css"])
+        self.assertEqual(
+            [item.get("src") for item in scripts if item.get("src")],
+            ["/assets/mobile-preview-foundation.js", "/assets/decision-account-preview.js"],
+        )
+        self.assertFalse(any(not item.get("src") for item in scripts))
+        private_scopes = [attrs for _, attrs in self.account_html.tags if attrs.get("data-capability-scope") == "private"]
+        self.assertTrue(private_scopes)
+        self.assertIn('foundation.capabilities.canAccess("private")', self.account_js_text)
+
+    def test_32_public_previews_do_not_link_to_private_account_preview(self) -> None:
+        self.assertNotIn("decision-account-preview", self.decision_html_text)
+        self.assertNotIn("decision-account-preview", self.journal_html_text)
+        self.assertNotIn("decision-account-preview", self.foundation_text)
+        self.assertNotIn("Account", self.decision_page_text)
+
+    def test_33_private_account_network_boundary_is_exact(self) -> None:
+        allowed_reads = re.search(r"const ALLOWED_READS\s*=\s*new Set\(\[(?P<body>.*?)\]\);", self.account_js_text, re.DOTALL)
+        self.assertIsNotNone(allowed_reads)
+        self.assertEqual(
+            set(re.findall(r'"(/api/[^"\']+)"', allowed_reads.group("body"))),
+            {"/api/analyze?include_latest=true", "/api/analysis-history?limit=50"},
+        )
+        allowed_streams = re.search(r"const ALLOWED_STREAMS\s*=\s*new Set\(\[(?P<body>.*?)\]\);", self.account_js_text, re.DOTALL)
+        self.assertIsNotNone(allowed_streams)
+        self.assertEqual(set(re.findall(r'"(/api/[^"\']+)"', allowed_streams.group("body"))), {"/api/account-stream"})
+        self.assertIn('approvedStreamPath("/api/account-stream")', self.account_js_text)
+        self.assertNotIn("/api/market-stream", self.account_js_text)
+        self.assertIn('method: "GET"', self.account_js_text)
+        self.assertNotRegex(self.account_js_text, r'method\s*:\s*"(?:POST|PUT|PATCH|DELETE)"')
+        self.assertNotRegex(self.account_js_text, r"\b(?:XMLHttpRequest|sendBeacon|WebSocket)\s*\(")
+
+    def test_34_private_account_demo_exits_before_live_reads_and_stream(self) -> None:
+        initialize = re.search(
+            r"function initialize\(\) \{(?P<body>.*?)\n  \}\n\n  window\.addEventListener",
+            self.account_js_text,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(initialize)
+        body = initialize.group("body")
+        demo_branch = body.index("if (demoMode)")
+        demo_return = body.index("return;", demo_branch)
+        self.assertLess(demo_return, body.index("connectAccountStream()"))
+        self.assertLess(demo_return, body.index("loadAnalysisReads()"))
+        self.assertIn("라이브 API와 계좌 스트림을 사용하지 않습니다", self.account_page_text)
+        self.assertIn("elements.demoBanner.hidden = false", self.account_js_text)
+
+    def test_35_private_account_defaults_hidden_and_never_persists_snapshots(self) -> None:
+        self.assertIn("privacyHidden: true", self.account_js_text)
+        self.assertGreaterEqual(self.account_page_text.count("••••••"), 5)
+        self.assertNotRegex(self.account_js_text, r"\b(?:localStorage|sessionStorage|indexedDB|document\.cookie)\b")
+        self.assertNotIn("JSON.stringify(state.account", self.account_js_text)
+        self.assertNotRegex(self.account_js_text, r"\b(?:placeOrder|place_order|submitOrder|cancelOrder|closePosition|setLeverage)\s*\(")
+
+    def test_36_private_account_links_positions_to_normalized_scenarios(self) -> None:
+        self.assertIn("architecture.buildViewModel", self.account_js_text)
+        self.assertIn("viewModel.private", self.account_js_text)
+        self.assertIn("latestScenarioForPosition", self.account_js_text)
+        self.assertIn("positionAction", self.account_js_text)
+        self.assertIn("POSITION → SCENARIO", self.account_page_text)
+        self.assertIn("동일 심볼의 최신 분석", self.account_page_text)
+        self.assertIn('return "EXIT"', self.account_js_text)
+        self.assertIn('return "MANAGE"', self.account_js_text)
+
+    def test_37_private_account_auth_boundary_is_explicit_and_not_overclaimed(self) -> None:
+        self.assertIn("OWNER PREVIEW ONLY", self.account_page_text)
+        self.assertIn("인증이 아직 없습니다", self.account_page_text)
+        self.assertIn("외부 공개 전", self.account_page_text)
+        self.assertIn("서버 측에서 보호", self.account_page_text)
+        self.assertIn("/api/account-stream", self.account_page_text)
+
+    def test_38_private_account_responsive_and_accessible_layout_contract(self) -> None:
+        self.assertRegex(self.account_css_text, r"@media\s*\(max-width:\s*390px\)")
+        self.assertRegex(self.account_css_text, r"@media\s*\(min-width:\s*1200px\)")
+        self.assertIn("224px minmax(0, 824px) 280px", self.account_css_text)
+        self.assertIn("min-height: 44px", self.account_css_text)
+        self.assertIn("env(safe-area-inset-bottom)", self.account_css_text)
+        self.assertRegex(self.account_css_text, r"@media\s*\(prefers-reduced-motion:\s*reduce\)")
+        viewport = next(item for item in self.account_html.attrs_for("meta") if item.get("name") == "viewport")
+        self.assertNotIn("user-scalable=no", viewport.get("content", ""))
+        self.assertTrue(self.account_html.attrs_for("main"))
 
 
 if __name__ == "__main__":
