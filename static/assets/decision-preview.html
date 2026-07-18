@@ -4,146 +4,242 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex,nofollow">
-  <meta name="theme-color" content="#F4F5F7">
-  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f4f5f7">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
   <title>Decision Layers Preview</title>
   <link rel="stylesheet" href="/assets/decision-preview.css">
 </head>
 <body>
-  <a class="decision-skip-link" href="#decision-main">본문으로 건너뛰기</a>
+  <a class="skip-link" href="#decision-main">본문으로 건너뛰기</a>
 
-  <div id="decision-demo-banner" class="decision-demo-banner" role="status" hidden>
-    <strong>DEMO DATA</strong>
-    <span>화면 검토용 샘플이며 라이브 API와 스트림을 사용하지 않습니다.</span>
+  <div id="decision-demo-banner" class="demo-banner" role="status" hidden>
+    <strong>샘플 데이터</strong>
+    <span>화면 검토용입니다. 라이브 API와 스트림을 사용하지 않습니다.</span>
   </div>
 
-  <div class="decision-layout">
-    <aside class="decision-side-nav" aria-label="주요 탐색">
-      <div class="decision-brand-block">
-        <span class="decision-brand-mark" aria-hidden="true">◇</span>
-        <div><strong data-product-name></strong><small data-product-tagline></small></div>
-      </div>
-      <nav class="decision-desktop-nav" aria-label="데스크톱 탐색">
-        <button type="button" aria-current="page">Market</button>
-        <button type="button" aria-disabled="true" disabled>Analysis</button>
-        <button type="button" aria-disabled="true" disabled>Setups</button>
-        <button type="button" aria-disabled="true" disabled>Journal</button>
+  <div class="decision-app">
+    <aside class="decision-sidebar" aria-label="주요 탐색">
+      <a class="brand-lockup" href="#market" data-product-home-label>
+        <span class="brand-mark" aria-hidden="true">◈</span>
+        <span><strong data-product-name></strong><small>Decision Layers</small></span>
+      </a>
+
+      <nav class="primary-nav" aria-label="Decision Layers">
+        <button type="button" data-route="market" aria-current="page"><span>01</span>Market</button>
+        <button type="button" data-route="analysis"><span>02</span>Analysis</button>
+        <button type="button" data-route="setups"><span>03</span>Setups</button>
+        <button type="button" data-route="journal" disabled aria-disabled="true"><span>04</span>Journal <small>다음 단계</small></button>
       </nav>
-      <p class="decision-preview-note">Decision Layers · MARKET preview</p>
+
+      <div class="sidebar-note">
+        <strong>Decision support only</strong>
+        <p>확률을 과장하지 않고 근거, 위험, 무효화 조건을 먼저 확인합니다.</p>
+      </div>
     </aside>
 
-    <div class="decision-main-frame">
-      <header class="decision-topbar">
-        <div class="decision-mobile-brand"><strong data-product-name></strong><small>MARKET</small></div>
-        <div class="decision-data-status" id="decision-data-status" data-state="loading" role="status" aria-live="polite">
-          <span class="decision-status-dot" aria-hidden="true"></span>
-          <span id="decision-data-status-label">데이터 확인 중</span>
+    <main id="decision-main" class="decision-main" tabindex="-1">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AI-assisted decision system</p>
+          <h1 id="screen-heading">Market</h1>
+        </div>
+        <div class="topbar-meta">
+          <span id="connection-state" class="status-chip" data-tone="neutral">연결 준비 중</span>
+          <a href="/mobile-preview">기존 모바일 화면</a>
         </div>
       </header>
 
-      <main id="decision-main" class="decision-main" tabindex="-1">
-        <section class="decision-page-heading" aria-labelledby="decision-market-title">
-          <p>MARKET</p>
-          <h1 id="decision-market-title">지금 시장에서 무엇을 해야 하는가</h1>
-          <span id="decision-updated">업데이트 대기</span>
-        </section>
+      <section id="market-screen" class="decision-screen" data-screen="market">
+        <div class="decision-grid">
+          <section class="content-column">
+            <article class="hero-card">
+              <div class="hero-market-line">
+                <div>
+                  <p class="eyebrow">현재 시장</p>
+                  <h2 id="market-pair">자산 확인 중</h2>
+                  <p id="market-symbol" class="muted">심볼을 불러오는 중입니다.</p>
+                </div>
+                <div class="price-block">
+                  <strong id="market-price">—</strong>
+                  <small id="market-updated">업데이트 대기</small>
+                </div>
+              </div>
+              <div class="market-state-row">
+                <div><span>Market state</span><strong id="market-state">데이터 확인 중</strong></div>
+                <div><span>Timeframe</span><strong id="market-timeframe">1h</strong></div>
+                <div><span>Live status</span><strong id="market-live-status">대기</strong></div>
+              </div>
+            </article>
 
-        <section class="decision-card decision-market-state" aria-labelledby="market-state-heading">
-          <div class="decision-section-label">시장 상태</div>
-          <h2 id="market-state-heading">시장 구조를 확인하고 있습니다</h2>
-          <p id="market-state-copy">시장 데이터와 최신 분석이 도착하면 현재 상황을 설명합니다.</p>
-        </section>
+            <article class="action-card" data-action="WAIT">
+              <div>
+                <p class="eyebrow">지금 할 행동</p>
+                <strong id="market-action">WAIT</strong>
+              </div>
+              <div>
+                <h2 id="market-action-title">데이터를 확인하세요</h2>
+                <p id="market-action-copy">조건이 명확하지 않은 시장에서는 거래하지 않는 것도 하나의 결정입니다.</p>
+              </div>
+            </article>
 
-        <section class="decision-card decision-action-card" aria-labelledby="current-action-heading">
-          <div class="decision-section-label">지금 해야 할 행동</div>
-          <div class="decision-action-row">
-            <h2 id="current-action-heading">WAIT</h2>
-            <span id="current-action-status">조건 확인 중</span>
-          </div>
-          <p id="current-action-copy">데이터가 충분해질 때까지 거래 결정을 미루세요.</p>
-          <div class="decision-next-condition"><span>Next condition</span><strong id="current-action-next">시장 구조 재확인</strong></div>
-        </section>
+            <article class="panel best-opportunity">
+              <div class="section-heading">
+                <div><p class="eyebrow">가장 중요한 기회</p><h2>Best opportunity</h2></div>
+                <button id="open-best-detail" type="button" class="text-button" disabled>Scenario detail</button>
+              </div>
+              <div class="opportunity-heading">
+                <div><strong id="best-pair">유효한 시나리오 대기</strong><span id="best-direction" class="muted">방향 미확인</span></div>
+                <div class="badge-row">
+                  <span id="best-grade" class="metric-badge">Grade —</span>
+                  <span id="best-quality" class="metric-badge">Scenario Quality —</span>
+                  <span id="best-risk" class="metric-badge">Risk guard —</span>
+                </div>
+              </div>
+              <p class="quality-note">Scenario Quality는 구조적 명확도이며 <strong>승률 아님</strong>. Risk guard와 별도로 판단합니다.</p>
+              <div class="evidence-split">
+                <div><h3>Supporting evidence</h3><ul id="market-supporting"><li>분석 근거를 기다리고 있습니다.</li></ul></div>
+                <div><h3>Counter evidence</h3><ul id="market-counter"><li>반대 시나리오를 기다리고 있습니다.</li></ul></div>
+              </div>
+              <dl class="plan-strip">
+                <div><dt>Entry</dt><dd id="market-entry">—</dd></div>
+                <div><dt>Stop</dt><dd id="market-stop">—</dd></div>
+                <div><dt>Target</dt><dd id="market-target">—</dd></div>
+                <div><dt>Suggested leverage</dt><dd id="market-leverage">—</dd></div>
+              </dl>
+            </article>
+          </section>
 
-        <section class="decision-card decision-opportunity-card" aria-labelledby="opportunity-heading">
-          <div class="decision-card-heading">
-            <div>
-              <div class="decision-section-label">가장 중요한 기회</div>
-              <h2 id="opportunity-heading"><span id="opportunity-pair">자산 미확인</span> <small id="opportunity-timeframe">—</small></h2>
+          <aside class="context-column">
+            <article class="panel">
+              <div class="section-heading"><div><p class="eyebrow">시장 배경</p><h2>Macro context</h2></div><span class="context-label">후보 아님</span></div>
+              <div id="macro-grid" class="context-grid"></div>
+              <p class="muted small">SPX·NDX·VIX·GOLD·IBIT는 거래 후보가 아니라 시나리오 배경 정보입니다.</p>
+            </article>
+            <article class="panel">
+              <div class="section-heading"><div><p class="eyebrow">후보 요약</p><h2>Setups at a glance</h2></div></div>
+              <div id="market-setup-summary" class="mini-setup-list"></div>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <section id="analysis-screen" class="decision-screen" data-screen="analysis" hidden>
+        <div class="page-intro">
+          <div><p class="eyebrow">Evidence before prediction</p><h2>왜 이런 판단인가?</h2></div>
+          <p>방향, 시나리오 품질, 위험을 섞지 않고 각각 확인합니다.</p>
+        </div>
+
+        <div class="analysis-layout">
+          <article class="panel analysis-summary">
+            <div class="analysis-identity">
+              <div><span id="analysis-pair" class="asset-label">—</span><h2 id="analysis-view">분석 대기</h2></div>
+              <div class="badge-row">
+                <span id="analysis-grade" class="metric-badge">Grade —</span>
+                <span id="analysis-quality" class="metric-badge">Scenario Quality —</span>
+                <span id="analysis-risk" class="metric-badge">Risk guard —</span>
+              </div>
             </div>
-            <span id="opportunity-direction" class="decision-direction" data-direction="unknown">방향 미확인</span>
-          </div>
-
-          <div class="decision-opportunity-metrics">
-            <div><span>Grade</span><strong id="opportunity-grade">—</strong></div>
-            <div><span>Scenario Quality</span><strong id="opportunity-quality">—</strong><small>현재 조건의 명확성 · 승률 아님</small></div>
-            <div><span>Risk guard</span><strong id="opportunity-risk">▱▱▱▱ UNAVAILABLE</strong></div>
-          </div>
-          <div class="decision-setup-status"><span>Status</span><strong id="opportunity-status">WAIT</strong></div>
-        </section>
-
-        <section class="decision-evidence-grid" aria-label="시나리오 근거">
-          <article class="decision-card">
-            <div class="decision-section-label">Supporting Evidence</div>
-            <ul id="supporting-evidence"><li>근거 데이터를 기다리고 있습니다.</li></ul>
+            <div class="action-inline"><span>Current action</span><strong id="analysis-action">WAIT</strong><p id="analysis-action-copy">분석 데이터를 기다리고 있습니다.</p></div>
           </article>
-          <article class="decision-card">
-            <div class="decision-section-label">Counter Evidence</div>
-            <ul id="counter-evidence"><li>반대 근거를 확인하고 있습니다.</li></ul>
-          </article>
-        </section>
 
-        <section class="decision-card" aria-labelledby="execution-heading">
-          <div class="decision-section-label">실행 계획 · 조언 전용</div>
-          <h2 id="execution-heading">Execution Preview</h2>
-          <dl class="decision-plan-grid">
-            <div><dt>ENTRY</dt><dd id="plan-entry">—</dd></div>
-            <div><dt>STOP</dt><dd id="plan-stop">—</dd></div>
-            <div><dt>TARGET</dt><dd id="plan-target">—</dd></div>
-            <div><dt>LEVERAGE</dt><dd id="plan-leverage">—</dd></div>
+          <section class="evidence-board">
+            <article class="panel"><p class="eyebrow">Facts</p><h3>확인된 사실</h3><ul id="analysis-supporting"><li>데이터를 기다리고 있습니다.</li></ul></article>
+            <article class="panel"><p class="eyebrow">Interpretation</p><h3>해석</h3><ul id="analysis-interpretation"><li>데이터를 기다리고 있습니다.</li></ul></article>
+            <article class="panel counter-panel"><p class="eyebrow">Counter scenario</p><h3>틀릴 수 있는 조건</h3><ul id="analysis-counter"><li>데이터를 기다리고 있습니다.</li></ul></article>
+          </section>
+
+          <article class="panel plan-card">
+            <div class="section-heading"><div><p class="eyebrow">Execution preview</p><h2>실행 계획은 근거 다음</h2></div><span class="context-label">읽기 전용</span></div>
+            <dl class="plan-grid">
+              <div><dt>Direction</dt><dd id="analysis-direction">—</dd></div>
+              <div><dt>Entry</dt><dd id="analysis-entry">—</dd></div>
+              <div><dt>Stop</dt><dd id="analysis-stop">—</dd></div>
+              <div><dt>Target</dt><dd id="analysis-target">—</dd></div>
+              <div><dt>Risk / Reward</dt><dd id="analysis-rr">—</dd></div>
+              <div><dt>Suggested leverage</dt><dd id="analysis-leverage">—</dd></div>
+              <div class="wide"><dt>Invalidation</dt><dd id="analysis-invalidation">—</dd></div>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <section id="setups-screen" class="decision-screen" data-screen="setups" hidden>
+        <div class="page-intro">
+          <div><p class="eyebrow">Compare, do not chase</p><h2>Setups</h2></div>
+          <p id="setups-summary">후보 데이터를 확인하고 있습니다.</p>
+        </div>
+        <div class="filter-row" role="group" aria-label="시나리오 등급 필터">
+          <button type="button" data-setup-filter="all" aria-pressed="true">전체</button>
+          <button type="button" data-setup-filter="A">A</button>
+          <button type="button" data-setup-filter="B+">B+</button>
+          <button type="button" data-setup-filter="watch">관찰</button>
+        </div>
+        <div id="setups-list" class="setups-list" role="list"></div>
+      </section>
+
+      <section id="detail-screen" class="decision-screen" data-screen="detail" hidden>
+        <button id="detail-back" type="button" class="back-button">← Setups</button>
+        <article class="detail-hero panel">
+          <div>
+            <p class="eyebrow">Scenario detail</p>
+            <h2 id="detail-pair">시나리오 선택 필요</h2>
+            <p id="detail-direction" class="muted">방향 미확인</p>
+          </div>
+          <div class="badge-row">
+            <span id="detail-grade" class="metric-badge">Grade —</span>
+            <span id="detail-quality" class="metric-badge">Scenario Quality —</span>
+            <span id="detail-risk" class="metric-badge">Risk guard —</span>
+          </div>
+        </article>
+        <article class="action-card detail-action" data-action="WAIT">
+          <div><p class="eyebrow">지금 할 행동</p><strong id="detail-action">WAIT</strong></div>
+          <div><h2 id="detail-action-title">시나리오를 선택하세요</h2><p id="detail-action-copy">후보 목록에서 하나를 선택하면 전체 근거를 표시합니다.</p></div>
+        </article>
+        <div class="detail-grid">
+          <article class="panel"><p class="eyebrow">Supporting</p><h3>근거</h3><ul id="detail-supporting"></ul></article>
+          <article class="panel"><p class="eyebrow">Interpretation</p><h3>해석</h3><ul id="detail-interpretation"></ul></article>
+          <article class="panel counter-panel"><p class="eyebrow">Counter</p><h3>반대 시나리오</h3><ul id="detail-counter"></ul></article>
+        </div>
+        <article class="panel plan-card">
+          <div class="section-heading"><div><p class="eyebrow">Execution plan</p><h2>계획과 무효화</h2></div></div>
+          <dl class="plan-grid">
+            <div><dt>Entry</dt><dd id="detail-entry">—</dd></div>
+            <div><dt>Stop</dt><dd id="detail-stop">—</dd></div>
+            <div><dt>Target</dt><dd id="detail-target">—</dd></div>
+            <div><dt>Risk / Reward</dt><dd id="detail-rr">—</dd></div>
+            <div><dt>Suggested leverage</dt><dd id="detail-leverage">—</dd></div>
+            <div><dt>Risk per trade</dt><dd id="detail-risk-percent">—</dd></div>
+            <div class="wide"><dt>Invalidation</dt><dd id="detail-invalidation">—</dd></div>
           </dl>
-          <p id="plan-invalidation" class="decision-invalidation">무효화 조건 데이터 없음</p>
-        </section>
-
-        <section class="decision-card" aria-labelledby="assets-heading">
-          <div class="decision-card-heading"><div><div class="decision-section-label">시장 탐색</div><h2 id="assets-heading">Major Assets</h2></div></div>
-          <div id="major-assets" class="decision-asset-list" role="list"></div>
-        </section>
-
-        <section class="decision-card" aria-labelledby="macro-heading">
-          <div class="decision-card-heading"><div><div class="decision-section-label">참고용 시장 배경</div><h2 id="macro-heading">Market Context</h2></div><span>매매 후보 아님</span></div>
-          <div id="macro-context" class="decision-macro-grid"></div>
-        </section>
-
-        <section class="decision-card decision-setup-summary" aria-labelledby="setup-summary-heading">
-          <div><div class="decision-section-label">SETUPS PREVIEW</div><h2 id="setup-summary-heading">현재 후보를 정리하고 있습니다</h2></div>
-          <p id="setup-summary-copy">유효한 분석 기록이 도착하면 품질 기준으로 요약합니다.</p>
-        </section>
-      </main>
-
-      <nav class="decision-bottom-nav" aria-label="모바일 탐색">
-        <button type="button" aria-current="page"><span aria-hidden="true">◉</span><strong>Market</strong></button>
-        <button type="button" aria-disabled="true" disabled><span aria-hidden="true">⌁</span><strong>Analysis</strong></button>
-        <button type="button" aria-disabled="true" disabled><span aria-hidden="true">◇</span><strong>Setups</strong></button>
-        <button type="button" aria-disabled="true" disabled><span aria-hidden="true">▤</span><strong>Journal</strong></button>
-      </nav>
-    </div>
-
-    <aside class="decision-context-rail" aria-label="현재 의사결정 요약">
-      <section class="decision-rail-card">
-        <div class="decision-section-label">CURRENT ACTION</div>
-        <strong id="rail-action">WAIT</strong>
-        <p id="rail-action-copy">시장 조건을 확인하고 있습니다.</p>
+        </article>
       </section>
-      <section class="decision-rail-card">
-        <div class="decision-section-label">TOP SETUP</div>
-        <strong id="rail-setup-pair">—</strong>
-        <p id="rail-setup-meta">유효한 시나리오 대기</p>
-      </section>
+    </main>
+
+    <aside class="decision-rail" aria-label="의사결정 원칙">
+      <article>
+        <p class="eyebrow">Decision order</p>
+        <ol><li>시장 상태</li><li>지금 행동</li><li>기회 품질</li><li>위험</li><li>근거</li><li>실행 계획</li></ol>
+      </article>
+      <article>
+        <p class="eyebrow">Reminder</p>
+        <strong>WAIT도 정상적인 결과입니다.</strong>
+        <p>좋은 의사결정은 항상 진입으로 끝나지 않습니다.</p>
+      </article>
     </aside>
   </div>
 
-  <noscript><p class="decision-noscript">이 읽기 전용 프리뷰에는 JavaScript가 필요합니다.</p></noscript>
+  <template id="setup-card-template">
+    <article class="setup-card panel" role="listitem">
+      <button type="button" class="setup-open">
+        <span class="setup-top"><span><strong class="setup-pair">—</strong><small class="setup-direction">—</small></span><span class="setup-action">WAIT</span></span>
+        <span class="badge-row"><span class="metric-badge setup-grade">Grade —</span><span class="metric-badge setup-quality">Scenario Quality —</span><span class="metric-badge setup-risk">Risk guard —</span></span>
+        <span class="setup-plan"><span>Entry <b data-field="entry">—</b></span><span>Stop <b data-field="stop">—</b></span><span>Target <b data-field="target">—</b></span></span>
+        <span class="setup-footer">상세 시나리오 보기 →</span>
+      </button>
+    </article>
+  </template>
+
+  <noscript><p class="noscript-message">이 읽기 전용 프리뷰에는 JavaScript가 필요합니다.</p></noscript>
   <script src="/assets/mobile-preview-foundation.js" defer></script>
   <script src="/assets/mobile-preview-macro-adapter.js" defer></script>
   <script src="/assets/decision-preview.js" defer></script>
