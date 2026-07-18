@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#071017">
   <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-  <title>BitSwipe 시나리오 커맨드 센터</title>
+  <title>시나리오 커맨드 센터</title>
   <link rel="stylesheet" href="/assets/mobile-preview.css">
 </head>
 <body>
@@ -36,11 +36,11 @@
 
   <div class="preview-shell">
     <main id="preview-main" class="preview-main" tabindex="-1">
-      <section id="scenario-screen" class="screen" data-screen="scenario" aria-labelledby="scenario-title">
+      <section id="scenario-screen" class="screen" data-screen="scenario" data-capability-scope="public" aria-labelledby="scenario-title">
         <header class="brand-header">
-          <a class="brand" href="#scenario" aria-label="BitSwipe 시나리오 홈">
+          <a class="brand" href="#scenario" data-product-home-label aria-label="시나리오 홈">
             <span class="brand-mark"><svg aria-hidden="true"><use href="#icon-logo"></use></svg></span>
-            <span>BitSwipe</span><small>Command Center</small>
+            <span data-product-name></span><small data-product-tagline></small>
           </a>
           <div class="header-actions">
             <span id="market-connection" class="connection-pill" data-state="loading" role="status" aria-live="polite">
@@ -158,7 +158,7 @@
         </section>
       </section>
 
-      <section id="candidates-screen" class="screen" data-screen="candidates" aria-labelledby="candidates-title" hidden>
+      <section id="candidates-screen" class="screen" data-screen="candidates" data-capability-scope="public" aria-labelledby="candidates-title" hidden>
         <header class="screen-header">
           <div><p class="eyebrow">저장된 분석 기록</p><h1 id="candidates-title">후보</h1><p id="candidate-summary" class="screen-subtitle" aria-live="polite">분석 기록을 불러오는 중입니다.</p></div>
           <label class="filter-control">등급 필터
@@ -192,7 +192,7 @@
         <div id="candidate-list" class="candidate-list" role="list" aria-label="분석 후보 목록"></div>
       </section>
 
-      <section id="account-screen" class="screen" data-screen="account" aria-labelledby="account-title" hidden>
+      <section id="account-screen" class="screen" data-screen="account" data-capability-scope="private" aria-labelledby="account-title" hidden>
         <header class="screen-header account-header">
           <div><p class="eyebrow">실행 제약 컨텍스트</p><h1 id="account-title">계좌 리스크</h1><p class="screen-subtitle">방향 근거가 아닌 현재 노출과 위험 여력을 보여 줍니다.</p></div>
           <button id="privacy-toggle" class="privacy-toggle" type="button" aria-pressed="true">
@@ -236,7 +236,7 @@
         <aside class="security-note"><svg aria-hidden="true"><use href="#icon-shield"></use></svg><p>주문·취소·청산 기능이 없는 읽기 전용 화면입니다. 절대 잔고 숨김 설정만 이 기기에 저장하며 계좌 스냅샷은 저장하지 않습니다.</p></aside>
       </section>
 
-      <section id="detail-screen" class="screen" data-screen="detail" aria-labelledby="detail-title" hidden>
+      <section id="detail-screen" class="screen" data-screen="detail" data-capability-scope="public" aria-labelledby="detail-title" hidden>
         <header class="detail-topbar">
           <button id="detail-back" class="icon-button" type="button" aria-label="후보 목록으로 돌아가기"><svg aria-hidden="true"><use href="#icon-back"></use></svg></button>
           <h1 id="detail-title">시나리오 상세</h1><span class="read-only-label">읽기 전용</span>
@@ -281,9 +281,9 @@
     </main>
 
     <nav class="bottom-nav" aria-label="모바일 미리보기 탐색">
-      <button type="button" data-route="scenario" aria-current="page"><svg aria-hidden="true"><use href="#icon-pulse"></use></svg><span>시나리오</span></button>
-      <button type="button" data-route="candidates"><svg aria-hidden="true"><use href="#icon-list"></use></svg><span>후보</span></button>
-      <button type="button" data-route="account"><svg aria-hidden="true"><use href="#icon-wallet"></use></svg><span>계좌</span></button>
+      <button type="button" data-route="scenario" data-capability-scope="public" aria-current="page"><svg aria-hidden="true"><use href="#icon-pulse"></use></svg><span>시나리오</span></button>
+      <button type="button" data-route="candidates" data-capability-scope="public"><svg aria-hidden="true"><use href="#icon-list"></use></svg><span>후보</span></button>
+      <button type="button" data-route="account" data-capability-scope="private"><svg aria-hidden="true"><use href="#icon-wallet"></use></svg><span>계좌</span></button>
     </nav>
   </div>
 
@@ -306,6 +306,7 @@
   </template>
 
   <noscript><p class="noscript-message">이 읽기 전용 미리보기에는 JavaScript가 필요합니다.</p></noscript>
+  <script src="/assets/mobile-preview-foundation.js" defer></script>
   <script src="/assets/mobile-preview-macro-adapter.js" defer></script>
   <script src="/assets/mobile-preview.js" defer></script>
 </body>

@@ -16,12 +16,14 @@ SERVER_PATH = ROOT / "server.py"
 HTML_PATH = ROOT / "static" / "mobile-preview.html"
 CSS_PATH = ROOT / "static" / "assets" / "mobile-preview.css"
 JS_PATH = ROOT / "static" / "assets" / "mobile-preview.js"
+FOUNDATION_PATH = ROOT / "static" / "assets" / "mobile-preview-foundation.js"
 MACRO_ADAPTER_PATH = ROOT / "static" / "assets" / "mobile-preview-macro-adapter.js"
 BASE_COMMIT = "6d39043ab121bdbd2900dffe481c86f167946d8c"
 ALLOWED_DIFFS = {
     "static/mobile-preview.html",
     "static/assets/mobile-preview.css",
     "static/assets/mobile-preview.js",
+    "static/assets/mobile-preview-foundation.js",
     "static/assets/mobile-preview-macro-adapter.js",
     "scripts/mobile_preview_test.py",
 }
@@ -76,9 +78,16 @@ class MobilePreviewV2Test(unittest.TestCase):
         cls.html_text = HTML_PATH.read_text(encoding="utf-8")
         cls.css_text = CSS_PATH.read_text(encoding="utf-8")
         cls.js_text = JS_PATH.read_text(encoding="utf-8")
+        cls.foundation_text = FOUNDATION_PATH.read_text(encoding="utf-8")
         cls.macro_adapter_text = MACRO_ADAPTER_PATH.read_text(encoding="utf-8")
         cls.combined_preview = "\n".join(
-            (cls.html_text, cls.css_text, cls.js_text, cls.macro_adapter_text)
+            (
+                cls.html_text,
+                cls.css_text,
+                cls.foundation_text,
+                cls.js_text,
+                cls.macro_adapter_text,
+            )
         )
         cls.server_tree = ast.parse(cls.server_text)
         cls.html = PreviewHTMLParser()
@@ -108,6 +117,7 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertEqual(
             [item.get("src") for item in scripts if item.get("src")],
             [
+                "/assets/mobile-preview-foundation.js",
                 "/assets/mobile-preview-macro-adapter.js",
                 "/assets/mobile-preview.js",
             ],
@@ -126,7 +136,7 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn("default-src 'self'", csp[0])
 
     def test_04_browser_network_code_is_read_only(self) -> None:
-        network_code = self.js_text + "\n" + self.macro_adapter_text
+        network_code = self.js_text + "\n" + self.foundation_text + "\n" + self.macro_adapter_text
         self.assertNotRegex(
             network_code,
             r'method\s*:\s*["\'](?:POST|PUT|PATCH|DELETE)["\']',
@@ -267,6 +277,7 @@ class MobilePreviewV2Test(unittest.TestCase):
                 r"state\.account|DEMO_ACCOUNT|wallet|balance|positions|notional|pnl|leverage",
             )
         self.assertNotIn("JSON.stringify(state.account", self.js_text)
+        self.assertNotIn("localStorage", self.foundation_text)
         self.assertNotIn("localStorage", self.macro_adapter_text)
         self.assertIn("계좌 스냅샷은 저장하지 않습니다", self.page_text)
 
@@ -283,7 +294,7 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn("잔고 표시", self.page_text)
 
     def test_16_no_secret_or_trading_action_code_is_present(self) -> None:
-        combined_js = self.js_text + "\n" + self.macro_adapter_text
+        combined_js = self.js_text + "\n" + self.foundation_text + "\n" + self.macro_adapter_text
         self.assertNotRegex(
             combined_js,
             r"(?i)\b(?:api[_-]?key|secret[_-]?key|listen[_-]?key|order[_-]?id)\b",
@@ -312,7 +323,7 @@ class MobilePreviewV2Test(unittest.TestCase):
         )
         self.assertIsNotNone(active_rule)
         self.assertRegex(active_rule.group(1), r"box-shadow|border|text-decoration|font-weight")
-        self.assertIn("candidate-card[data-active=\"true\"]", self.css_text)
+        self.assertIn('candidate-card[data-active="true"]', self.css_text)
 
     def test_18_candidate_history_is_dynamic_and_not_btc_filtered(self) -> None:
         self.assertIn("/api/analysis-history?limit=50", self.js_text)
@@ -373,6 +384,10 @@ class MobilePreviewV2Test(unittest.TestCase):
     def test_24_macro_adapter_matches_live_backend_contract(self) -> None:
         scripts = [item.get("src") for item in self.html.attrs_for("script") if item.get("src")]
         self.assertLess(
+            scripts.index("/assets/mobile-preview-foundation.js"),
+            scripts.index("/assets/mobile-preview-macro-adapter.js"),
+        )
+        self.assertLess(
             scripts.index("/assets/mobile-preview-macro-adapter.js"),
             scripts.index("/assets/mobile-preview.js"),
         )
@@ -384,12 +399,83 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn('url.pathname !== "/api/macro"', self.macro_adapter_text)
         self.assertIn("url.origin !== window.location.origin", self.macro_adapter_text)
         self.assertIn("response.clone().json()", self.macro_adapter_text)
-        self.assertIn("if (typeof value === \"number\" && Number.isFinite(value)) return value;", self.macro_adapter_text)
+        self.assertIn('if (typeof value === "number" && Number.isFinite(value)) return value;', self.macro_adapter_text)
         self.assertNotIn("localStorage", self.macro_adapter_text)
         self.assertNotRegex(
             self.macro_adapter_text,
             r'method\s*:\s*["\'](?:POST|PUT|PATCH|DELETE)["\']',
         )
+
+    def test_25_product_identity_is_centralized(self) -> None:
+        for field in ("name", "shortName", "tagline", "description"):
+            self.assertRegex(self.foundation_text, rf"\b{field}\s*:")
+        self.assertIn('name: "BitSwipe"', self.foundation_text)
+        self.assertIn('shortName: "BitSwipe"', self.foundation_text)
+        self.assertIn('tagline: "Command Center"', self.foundation_text)
+        self.assertNotIn("BitSwipe", self.html_text)
+        self.assertNotIn("BitSwipe", self.js_text)
+        self.assertNotIn("BitSwipe", self.macro_adapter_text)
+        self.assertIn("data-product-name", self.html_text)
+        self.assertIn("data-product-tagline", self.html_text)
+        self.assertIn("document.title = product.name", self.foundation_text)
+
+    def test_26_public_private_capability_boundary_exists(self) -> None:
+        for capability in (
+            "market.data",
+            "macro.context",
+            "analysis",
+            "candidates",
+            "scenarios",
+            "account.balances",
+            "account.positions",
+            "account.context",
+        ):
+            self.assertIn(f'"{capability}"', self.foundation_text)
+        self.assertIn('mode: "owner"', self.foundation_text)
+        self.assertIn("public: true", self.foundation_text)
+        self.assertIn("private: true", self.foundation_text)
+        screen_scopes = {
+            attrs.get("data-screen"): attrs.get("data-capability-scope")
+            for tag, attrs in self.html.tags
+            if tag == "section" and attrs.get("data-screen")
+        }
+        self.assertEqual(screen_scopes.get("scenario"), "public")
+        self.assertEqual(screen_scopes.get("candidates"), "public")
+        self.assertEqual(screen_scopes.get("detail"), "public")
+        self.assertEqual(screen_scopes.get("account"), "private")
+        account_nav = next(
+            attrs
+            for tag, attrs in self.html.tags
+            if tag == "button" and attrs.get("data-route") == "account"
+        )
+        self.assertEqual(account_nav.get("data-capability-scope"), "private")
+
+    def test_27_foundation_has_no_storage_or_network_side_effects(self) -> None:
+        self.assertNotRegex(
+            self.foundation_text,
+            r"\b(?:localStorage|sessionStorage|indexedDB|document\.cookie)\b",
+        )
+        self.assertNotRegex(
+            self.foundation_text,
+            r"\b(?:fetch|EventSource|XMLHttpRequest|sendBeacon|WebSocket)\s*\(",
+        )
+        self.assertNotRegex(
+            self.foundation_text,
+            r'method\s*:\s*["\'](?:POST|PUT|PATCH|DELETE)["\']',
+        )
+
+    def test_28_honest_data_state_semantics_exist(self) -> None:
+        for state_name in (
+            'loading: "loading"',
+            'unavailable: "unavailable"',
+            'endpointFailure: "endpoint_failure"',
+            'stale: "stale"',
+            'ready: "ready"',
+            'demo: "demo"',
+        ):
+            self.assertIn(state_name, self.foundation_text)
+        self.assertIn("zeroIsValue: true", self.foundation_text)
+        self.assertIn("missingValue: null", self.foundation_text)
 
     def test_preview_route_and_static_mount_remain_isolated(self) -> None:
         async_functions = [
@@ -415,6 +501,7 @@ class MobilePreviewV2Test(unittest.TestCase):
 
     def test_dynamic_content_uses_text_content_not_inner_html(self) -> None:
         self.assertNotIn("innerHTML", self.js_text)
+        self.assertNotIn("innerHTML", self.foundation_text)
         self.assertNotIn("innerHTML", self.macro_adapter_text)
         self.assertGreater(self.js_text.count(".textContent"), 50)
         self.assertIn("replaceChildren", self.js_text)
