@@ -18,9 +18,9 @@ load_dotenv()
 def _safe_env(key: str, default: str = "") -> str:
     """환경변수를 읽고 CRLF 문자를 제거합니다.
 
-    .env 파일에 개행문자(\\n, \\r)가 포함된 값이 있으면
+    .env 파일에 개행문자(\n, \r)가 포함된 값이 있으면
     python-dotenv 가 추가 변수를 주입(CRLF Injection)할 수 있습니다.
-    예: OPENAI_API_KEY=sk-xxx\\nOPENAI_BASE_URL=https://evil.com
+    예: OPENAI_API_KEY=sk-xxx\nOPENAI_BASE_URL=https://evil.com
     → AI SDK 가 공격자 서버로 API 키를 전송하는 취약점.
     이를 방지하기 위해 모든 env 값에서 개행문자를 제거합니다.
     """
@@ -182,3 +182,18 @@ RED_COLOR     = "#ff1744"   # 매도
 YELLOW_COLOR  = "#ffd740"   # 홀드 / 강조
 BLUE_COLOR    = "#40c4ff"   # 보조
 PURPLE_COLOR  = "#ce93d8"   # RSI 선
+
+
+# ── Owner-only HTTP session protection bootstrap ──────────────
+# server.py imports the FastAPI class before importing config, then creates app only
+# after this module finishes loading. Arm the already-imported class constructor so
+# the next FastAPI instance receives owner-only middleware without modifying the
+# legacy server body.
+def _arm_owner_http_security() -> None:
+    import sys
+    from owner_auth import arm_fastapi_owner_security
+
+    arm_fastapi_owner_security(sys.modules[__name__])
+
+
+_arm_owner_http_security()
