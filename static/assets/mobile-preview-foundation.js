@@ -393,7 +393,37 @@
     });
   }
 
+  function applyDecisionPublicShellNavigation() {
+    const decisionPath = "/assets/decision-preview.html";
+    const journalPath = "/assets/decision-journal-preview.html";
+    const pathname = window.location.pathname;
+    if (pathname !== decisionPath && pathname !== journalPath) return;
+
+    const demoSuffix = new URLSearchParams(window.location.search).get("demo") === "1" ? "?demo=1" : "";
+
+    if (pathname === decisionPath) {
+      const journalButton = document.querySelector('[data-route="journal"]');
+      if (!journalButton) return;
+      journalButton.disabled = false;
+      journalButton.removeAttribute("aria-disabled");
+      journalButton.removeAttribute("data-route");
+      const note = journalButton.querySelector("small");
+      if (note) note.textContent = "읽기 전용";
+      journalButton.addEventListener("click", () => {
+        window.location.assign(journalPath + demoSuffix);
+      });
+      return;
+    }
+
+    document.querySelectorAll('a[href^="/assets/decision-preview.html"]').forEach((link) => {
+      const rawHref = link.getAttribute("href") || decisionPath;
+      const target = new URL(rawHref, window.location.origin);
+      link.setAttribute("href", target.pathname + demoSuffix + target.hash);
+    });
+  }
+
   window.MobilePreviewFoundation = foundation;
   window.MobilePreviewArchitecture = architecture;
   applyProductIdentity();
+  applyDecisionPublicShellNavigation();
 })();

@@ -27,6 +27,7 @@ JOURNAL_JS_PATH = ROOT / "static" / "assets" / "decision-journal-preview.js"
 
 BASE_COMMIT = "6d39043ab121bdbd2900dffe481c86f167946d8c"
 JOURNAL_BASE_COMMIT = "0303280a9694f9fd71a90a0dd11a5bd73aac556d"
+PUBLIC_SHELL_BASE_COMMIT = "39b106573cb91961ea87947cc8f37ff151ef741e"
 ALLOWED_DIFFS = {
     "static/mobile-preview.html",
     "static/assets/mobile-preview.css",
@@ -121,7 +122,7 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
             worktree_blob = git_output("hash-object", relative_path).strip()
             self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed from mobile base")
 
-    def test_02_journal_v3_is_exactly_isolated_to_three_assets_and_test_contract(self) -> None:
+    def test_02_journal_v3_and_public_shell_v4_are_exactly_isolated(self) -> None:
         self.assertEqual(git_output("rev-parse", JOURNAL_BASE_COMMIT).strip().decode(), JOURNAL_BASE_COMMIT)
         changed = set(git_output("diff", "--name-only", JOURNAL_BASE_COMMIT, "--").decode().splitlines())
         self.assertEqual(
@@ -130,6 +131,7 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
                 "static/assets/decision-journal-preview.html",
                 "static/assets/decision-journal-preview.css",
                 "static/assets/decision-journal-preview.js",
+                "static/assets/mobile-preview-foundation.js",
                 "scripts/mobile_preview_test.py",
             },
         )
@@ -138,7 +140,6 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
             "static/mobile-preview.html",
             "static/assets/mobile-preview.css",
             "static/assets/mobile-preview.js",
-            "static/assets/mobile-preview-foundation.js",
             "static/assets/mobile-preview-macro-adapter.js",
             "static/assets/decision-preview.html",
             "static/assets/decision-preview.css",
@@ -146,7 +147,38 @@ class FrontendPreviewSafetyTest(unittest.TestCase):
         ):
             base_blob = git_output("rev-parse", f"{JOURNAL_BASE_COMMIT}:{relative_path}").strip()
             worktree_blob = git_output("hash-object", relative_path).strip()
-            self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed in Journal v3")
+            self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed after Journal base")
+
+        self.assertEqual(
+            git_output("rev-parse", PUBLIC_SHELL_BASE_COMMIT).strip().decode(),
+            PUBLIC_SHELL_BASE_COMMIT,
+        )
+        shell_changed = set(
+            git_output("diff", "--name-only", PUBLIC_SHELL_BASE_COMMIT, "--").decode().splitlines()
+        )
+        self.assertEqual(
+            shell_changed,
+            {
+                "static/assets/mobile-preview-foundation.js",
+                "scripts/mobile_preview_test.py",
+            },
+        )
+        for relative_path in (
+            "server.py",
+            "static/mobile-preview.html",
+            "static/assets/mobile-preview.css",
+            "static/assets/mobile-preview.js",
+            "static/assets/mobile-preview-macro-adapter.js",
+            "static/assets/decision-preview.html",
+            "static/assets/decision-preview.css",
+            "static/assets/decision-preview.js",
+            "static/assets/decision-journal-preview.html",
+            "static/assets/decision-journal-preview.css",
+            "static/assets/decision-journal-preview.js",
+        ):
+            base_blob = git_output("rev-parse", f"{PUBLIC_SHELL_BASE_COMMIT}:{relative_path}").strip()
+            worktree_blob = git_output("hash-object", relative_path).strip()
+            self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed in Public Shell v4")
 
     def test_03_root_and_mobile_preview_routes_remain_isolated(self) -> None:
         async_functions = [node for node in self.server_tree.body if isinstance(node, ast.AsyncFunctionDef)]
