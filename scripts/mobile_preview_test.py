@@ -16,11 +16,13 @@ SERVER_PATH = ROOT / "server.py"
 HTML_PATH = ROOT / "static" / "mobile-preview.html"
 CSS_PATH = ROOT / "static" / "assets" / "mobile-preview.css"
 JS_PATH = ROOT / "static" / "assets" / "mobile-preview.js"
+MACRO_ADAPTER_PATH = ROOT / "static" / "assets" / "mobile-preview-macro-adapter.js"
 BASE_COMMIT = "6d39043ab121bdbd2900dffe481c86f167946d8c"
 ALLOWED_DIFFS = {
     "static/mobile-preview.html",
     "static/assets/mobile-preview.css",
     "static/assets/mobile-preview.js",
+    "static/assets/mobile-preview-macro-adapter.js",
     "scripts/mobile_preview_test.py",
 }
 
@@ -74,7 +76,10 @@ class MobilePreviewV2Test(unittest.TestCase):
         cls.html_text = HTML_PATH.read_text(encoding="utf-8")
         cls.css_text = CSS_PATH.read_text(encoding="utf-8")
         cls.js_text = JS_PATH.read_text(encoding="utf-8")
-        cls.combined_preview = "\n".join((cls.html_text, cls.css_text, cls.js_text))
+        cls.macro_adapter_text = MACRO_ADAPTER_PATH.read_text(encoding="utf-8")
+        cls.combined_preview = "\n".join(
+            (cls.html_text, cls.css_text, cls.js_text, cls.macro_adapter_text)
+        )
         cls.server_tree = ast.parse(cls.server_text)
         cls.html = PreviewHTMLParser()
         cls.html.feed(cls.html_text)
@@ -102,7 +107,10 @@ class MobilePreviewV2Test(unittest.TestCase):
         )
         self.assertEqual(
             [item.get("src") for item in scripts if item.get("src")],
-            ["/assets/mobile-preview.js"],
+            [
+                "/assets/mobile-preview-macro-adapter.js",
+                "/assets/mobile-preview.js",
+            ],
         )
         self.assertFalse(any(not item.get("src") for item in scripts), "inline scripts are not allowed")
 
@@ -118,13 +126,14 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn("default-src 'self'", csp[0])
 
     def test_04_browser_network_code_is_read_only(self) -> None:
+        network_code = self.js_text + "\n" + self.macro_adapter_text
         self.assertNotRegex(
-            self.js_text,
+            network_code,
             r'method\s*:\s*["\'](?:POST|PUT|PATCH|DELETE)["\']',
         )
-        self.assertNotRegex(self.js_text, r"\b(?:XMLHttpRequest|sendBeacon|WebSocket)\s*\(")
+        self.assertNotRegex(network_code, r"\b(?:XMLHttpRequest|sendBeacon|WebSocket)\s*\(")
         self.assertNotRegex(
-            self.js_text,
+            network_code,
             r"\b(?:placeOrder|place_order|submitOrder|cancelOrder|closePosition|setLeverage)\s*\(",
         )
 
@@ -258,6 +267,7 @@ class MobilePreviewV2Test(unittest.TestCase):
                 r"state\.account|DEMO_ACCOUNT|wallet|balance|positions|notional|pnl|leverage",
             )
         self.assertNotIn("JSON.stringify(state.account", self.js_text)
+        self.assertNotIn("localStorage", self.macro_adapter_text)
         self.assertIn("계좌 스냅샷은 저장하지 않습니다", self.page_text)
 
     def test_15_balance_privacy_is_hidden_by_default(self) -> None:
@@ -273,12 +283,13 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn("잔고 표시", self.page_text)
 
     def test_16_no_secret_or_trading_action_code_is_present(self) -> None:
+        combined_js = self.js_text + "\n" + self.macro_adapter_text
         self.assertNotRegex(
-            self.js_text,
+            combined_js,
             r"(?i)\b(?:api[_-]?key|secret[_-]?key|listen[_-]?key|order[_-]?id)\b",
         )
         self.assertNotRegex(
-            self.js_text,
+            combined_js,
             r"(?i)\b(?:buy|sell|long|short)[A-Za-z_]*(?:Order|Position)\s*\(",
         )
         buttons = self.html.attrs_for("button")
@@ -359,6 +370,27 @@ class MobilePreviewV2Test(unittest.TestCase):
             5,
         )
 
+    def test_24_macro_adapter_matches_live_backend_contract(self) -> None:
+        scripts = [item.get("src") for item in self.html.attrs_for("script") if item.get("src")]
+        self.assertLess(
+            scripts.index("/assets/mobile-preview-macro-adapter.js"),
+            scripts.index("/assets/mobile-preview.js"),
+        )
+        self.assertIn('hasOwnProperty.call(raw, "_trad_markets")', self.macro_adapter_text)
+        self.assertIn("normalized.trad_markets = asObject(raw._trad_markets)", self.macro_adapter_text)
+        self.assertIn("normalized.trad_markets = asObject(raw.trad_markets)", self.macro_adapter_text)
+        self.assertIn("const ibit = asObject(raw.IBIT_PX)", self.macro_adapter_text)
+        self.assertIn("ibit.change24h", self.macro_adapter_text)
+        self.assertIn('url.pathname !== "/api/macro"', self.macro_adapter_text)
+        self.assertIn("url.origin !== window.location.origin", self.macro_adapter_text)
+        self.assertIn("response.clone().json()", self.macro_adapter_text)
+        self.assertIn("if (typeof value === \"number\" && Number.isFinite(value)) return value;", self.macro_adapter_text)
+        self.assertNotIn("localStorage", self.macro_adapter_text)
+        self.assertNotRegex(
+            self.macro_adapter_text,
+            r'method\s*:\s*["\'](?:POST|PUT|PATCH|DELETE)["\']',
+        )
+
     def test_preview_route_and_static_mount_remain_isolated(self) -> None:
         async_functions = [
             node for node in self.server_tree.body
@@ -383,6 +415,7 @@ class MobilePreviewV2Test(unittest.TestCase):
 
     def test_dynamic_content_uses_text_content_not_inner_html(self) -> None:
         self.assertNotIn("innerHTML", self.js_text)
+        self.assertNotIn("innerHTML", self.macro_adapter_text)
         self.assertGreater(self.js_text.count(".textContent"), 50)
         self.assertIn("replaceChildren", self.js_text)
 
