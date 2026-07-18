@@ -11,9 +11,12 @@ import sys
 import time
 import unittest
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import owner_auth
 
-ROOT = Path(__file__).resolve().parents[1]
 SECURITY_BASE_COMMIT = "1b63d76eacb2e3216200168c9988bf1b534638a7"
 SERVER_PATH = ROOT / "server.py"
 HTTP_CLIENT_PATH = ROOT / "http_client.py"
