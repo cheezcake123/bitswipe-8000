@@ -268,3 +268,27 @@ def install_owner_security(app, runtime_config) -> None:
         response.delete_cookie(OWNER_SESSION_COOKIE, path="/")
         response.headers["Cache-Control"] = "no-store"
         return response
+
+
+def arm_fastapi_owner_security(runtime_config) -> None:
+    """Attach owner security to the next FastAPI app created after config import.
+
+    server.py imports FastAPI before config and creates its app only after config has
+    loaded. Patching the already-imported class constructor here keeps server.py byte-
+    identical while installing the middleware exactly once per FastAPI instance.
+    """
+    from fastapi import FastAPI
+
+    if getattr(FastAPI, "_bitswipe_owner_security_armed", False):
+        return
+
+    original_init = FastAPI.__init__
+
+    def secured_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        if not getattr(self.state, "bitswipe_owner_security_installed", False):
+            install_owner_security(self, runtime_config)
+            self.state.bitswipe_owner_security_installed = True
+
+    FastAPI.__init__ = secured_init
+    FastAPI._bitswipe_owner_security_armed = True
