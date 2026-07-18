@@ -18,13 +18,20 @@ CSS_PATH = ROOT / "static" / "assets" / "mobile-preview.css"
 JS_PATH = ROOT / "static" / "assets" / "mobile-preview.js"
 FOUNDATION_PATH = ROOT / "static" / "assets" / "mobile-preview-foundation.js"
 MACRO_ADAPTER_PATH = ROOT / "static" / "assets" / "mobile-preview-macro-adapter.js"
+DECISION_HTML_PATH = ROOT / "static" / "assets" / "decision-preview.html"
+DECISION_CSS_PATH = ROOT / "static" / "assets" / "decision-preview.css"
+DECISION_JS_PATH = ROOT / "static" / "assets" / "decision-preview.js"
 BASE_COMMIT = "6d39043ab121bdbd2900dffe481c86f167946d8c"
+DESIGNER_BASE_COMMIT = "e09a1a3d0c1377ba435b9176ad6d2b31c7d5be02"
 ALLOWED_DIFFS = {
     "static/mobile-preview.html",
     "static/assets/mobile-preview.css",
     "static/assets/mobile-preview.js",
     "static/assets/mobile-preview-foundation.js",
     "static/assets/mobile-preview-macro-adapter.js",
+    "static/assets/decision-preview.html",
+    "static/assets/decision-preview.css",
+    "static/assets/decision-preview.js",
     "scripts/mobile_preview_test.py",
 }
 
@@ -80,6 +87,9 @@ class MobilePreviewV2Test(unittest.TestCase):
         cls.js_text = JS_PATH.read_text(encoding="utf-8")
         cls.foundation_text = FOUNDATION_PATH.read_text(encoding="utf-8")
         cls.macro_adapter_text = MACRO_ADAPTER_PATH.read_text(encoding="utf-8")
+        cls.decision_html_text = DECISION_HTML_PATH.read_text(encoding="utf-8")
+        cls.decision_css_text = DECISION_CSS_PATH.read_text(encoding="utf-8")
+        cls.decision_js_text = DECISION_JS_PATH.read_text(encoding="utf-8")
         cls.combined_preview = "\n".join(
             (
                 cls.html_text,
@@ -87,12 +97,18 @@ class MobilePreviewV2Test(unittest.TestCase):
                 cls.foundation_text,
                 cls.js_text,
                 cls.macro_adapter_text,
+                cls.decision_html_text,
+                cls.decision_css_text,
+                cls.decision_js_text,
             )
         )
         cls.server_tree = ast.parse(cls.server_text)
         cls.html = PreviewHTMLParser()
         cls.html.feed(cls.html_text)
         cls.page_text = " ".join(cls.html.text)
+        cls.decision_html = PreviewHTMLParser()
+        cls.decision_html.feed(cls.decision_html_text)
+        cls.decision_page_text = " ".join(cls.decision_html.text)
 
     def test_01_only_allowed_preview_files_differ_from_exact_base(self) -> None:
         self.assertEqual(git_output("rev-parse", BASE_COMMIT).strip().decode(), BASE_COMMIT)
@@ -136,7 +152,9 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn("default-src 'self'", csp[0])
 
     def test_04_browser_network_code_is_read_only(self) -> None:
-        network_code = self.js_text + "\n" + self.foundation_text + "\n" + self.macro_adapter_text
+        network_code = "\n".join(
+            (self.js_text, self.foundation_text, self.macro_adapter_text, self.decision_js_text)
+        )
         self.assertNotRegex(
             network_code,
             r'method\s*:\s*["\'](?:POST|PUT|PATCH|DELETE)["\']',
@@ -279,6 +297,7 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertNotIn("JSON.stringify(state.account", self.js_text)
         self.assertNotIn("localStorage", self.foundation_text)
         self.assertNotIn("localStorage", self.macro_adapter_text)
+        self.assertNotIn("localStorage", self.decision_js_text)
         self.assertIn("계좌 스냅샷은 저장하지 않습니다", self.page_text)
 
     def test_15_balance_privacy_is_hidden_by_default(self) -> None:
@@ -294,7 +313,9 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn("잔고 표시", self.page_text)
 
     def test_16_no_secret_or_trading_action_code_is_present(self) -> None:
-        combined_js = self.js_text + "\n" + self.foundation_text + "\n" + self.macro_adapter_text
+        combined_js = "\n".join(
+            (self.js_text, self.foundation_text, self.macro_adapter_text, self.decision_js_text)
+        )
         self.assertNotRegex(
             combined_js,
             r"(?i)\b(?:api[_-]?key|secret[_-]?key|listen[_-]?key|order[_-]?id)\b",
@@ -477,6 +498,136 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertIn("zeroIsValue: true", self.foundation_text)
         self.assertIn("missingValue: null", self.foundation_text)
 
+    def test_29_designer_preview_isolated_to_new_assets_and_test_contract(self) -> None:
+        self.assertEqual(git_output("rev-parse", DESIGNER_BASE_COMMIT).strip().decode(), DESIGNER_BASE_COMMIT)
+        changed = set(
+            git_output("diff", "--name-only", DESIGNER_BASE_COMMIT, "--")
+            .decode("utf-8")
+            .splitlines()
+        )
+        self.assertEqual(
+            changed,
+            {
+                "static/assets/decision-preview.html",
+                "static/assets/decision-preview.css",
+                "static/assets/decision-preview.js",
+                "scripts/mobile_preview_test.py",
+            },
+        )
+        for relative_path in (
+            "server.py",
+            "static/mobile-preview.html",
+            "static/assets/mobile-preview.css",
+            "static/assets/mobile-preview.js",
+            "static/assets/mobile-preview-foundation.js",
+            "static/assets/mobile-preview-macro-adapter.js",
+        ):
+            base_blob = git_output("rev-parse", f"{DESIGNER_BASE_COMMIT}:{relative_path}").strip()
+            worktree_blob = git_output("hash-object", relative_path).strip()
+            self.assertEqual(base_blob, worktree_blob, f"{relative_path} changed in Designer UI v1")
+
+    def test_30_decision_preview_uses_local_assets_and_existing_view_model_contract(self) -> None:
+        links = self.decision_html.attrs_for("link")
+        scripts = self.decision_html.attrs_for("script")
+        self.assertEqual(
+            [item.get("href") for item in links if item.get("rel") == "stylesheet"],
+            ["/assets/decision-preview.css"],
+        )
+        self.assertEqual(
+            [item.get("src") for item in scripts if item.get("src")],
+            [
+                "/assets/mobile-preview-foundation.js",
+                "/assets/mobile-preview-macro-adapter.js",
+                "/assets/decision-preview.js",
+            ],
+        )
+        self.assertFalse(any(not item.get("src") for item in scripts), "decision preview inline scripts are not allowed")
+        self.assertIn("window.MobilePreviewArchitecture", self.decision_js_text)
+        self.assertIn("architecture.buildViewModel", self.decision_js_text)
+        csp = [
+            item.get("content", "")
+            for item in self.decision_html.attrs_for("meta")
+            if item.get("http-equiv", "").lower() == "content-security-policy"
+        ]
+        self.assertEqual(len(csp), 1)
+        self.assertIn("connect-src 'self'", csp[0])
+
+    def test_31_decision_preview_reads_public_sources_only(self) -> None:
+        allowed_reads = re.search(r"const ALLOWED_READS\s*=\s*new Set\(\[(?P<body>.*?)\]\);", self.decision_js_text, re.DOTALL)
+        self.assertIsNotNone(allowed_reads)
+        self.assertEqual(
+            set(re.findall(r'"(/api/[^"\']+)"', allowed_reads.group("body"))),
+            {
+                "/api/analyze?include_latest=true",
+                "/api/analysis-history?limit=50",
+                "/api/macro",
+                "/api/symbol",
+            },
+        )
+        allowed_streams = re.search(r"const ALLOWED_STREAMS\s*=\s*new Set\(\[(?P<body>.*?)\]\);", self.decision_js_text, re.DOTALL)
+        self.assertIsNotNone(allowed_streams)
+        self.assertEqual(set(re.findall(r'"(/api/[^"\']+)"', allowed_streams.group("body"))), {"/api/market-stream"})
+        self.assertIn('approvedStreamPath("/api/market-stream")', self.decision_js_text)
+        self.assertNotIn("/api/account-stream", self.decision_js_text)
+        self.assertNotIn("PRIVATE ACCOUNT", self.decision_page_text.upper())
+        self.assertRegex(self.decision_js_text, r'method:\s*"GET"')
+        self.assertNotRegex(self.decision_js_text, r'method\s*:\s*"(?:POST|PUT|PATCH|DELETE)"')
+
+    def test_32_decision_demo_exits_before_live_reads_and_stream(self) -> None:
+        initialize = re.search(
+            r"function initialize\(\) \{(?P<body>.*?)\n  \}\n\n  window\.addEventListener",
+            self.decision_js_text,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(initialize)
+        body = initialize.group("body")
+        demo_branch = body.index("if (demoMode)")
+        demo_return = body.index("return;", demo_branch)
+        self.assertLess(demo_return, body.index("connectMarketStream()"))
+        self.assertLess(demo_return, body.index("loadLiveReads()"))
+        self.assertIn("라이브 API와 스트림을 사용하지 않습니다", self.decision_page_text)
+        self.assertIn("elements.demoBanner.hidden = false", self.decision_js_text)
+        self.assertIn("_trad_markets", self.decision_js_text)
+        self.assertIn("change24h", self.decision_js_text)
+
+    def test_33_decision_language_separates_action_quality_and_risk(self) -> None:
+        for action in ("WAIT", "WATCH", "PREPARE", "READY", "MANAGE", "EXIT", "INVALIDATED"):
+            self.assertIn(f'"{action}"', self.decision_js_text)
+        self.assertIn("Scenario Quality", self.decision_page_text)
+        self.assertIn("승률 아님", self.decision_page_text)
+        self.assertIn("Risk guard", self.decision_page_text)
+        self.assertIn("조건이 명확하지 않은 시장에서는 거래하지 않는 것도 하나의 결정입니다", self.decision_js_text)
+        self.assertNotIn("Strong Buy", self.decision_page_text)
+        self.assertNotIn("Win Rate", self.decision_page_text)
+
+    def test_34_decision_navigation_and_responsive_layout_follow_design_contract(self) -> None:
+        for label in ("Market", "Analysis", "Setups", "Journal"):
+            self.assertIn(label, self.decision_page_text)
+        self.assertNotIn("Account", self.decision_page_text)
+        self.assertRegex(self.decision_css_text, r"@media\s*\(max-width:\s*390px\)")
+        self.assertRegex(self.decision_css_text, r"@media\s*\(min-width:\s*1200px\)")
+        self.assertIn("224px minmax(0, 824px) 280px", self.decision_css_text)
+        self.assertIn("min-height: 44px", self.decision_css_text)
+        self.assertIn("env(safe-area-inset-bottom)", self.decision_css_text)
+        self.assertRegex(self.decision_css_text, r"@media\s*\(prefers-reduced-motion:\s*reduce\)")
+
+    def test_35_decision_preview_preserves_zero_and_has_no_browser_persistence(self) -> None:
+        self.assertIn('if (typeof value === "number" && Number.isFinite(value)) return value;', self.decision_js_text)
+        self.assertIn('if (!Number.isFinite(value)) return "—";', self.decision_js_text)
+        self.assertNotRegex(
+            self.decision_js_text,
+            r"\b(?:localStorage|sessionStorage|indexedDB|document\.cookie)\b",
+        )
+        self.assertNotRegex(
+            self.decision_js_text,
+            r"\b(?:placeOrder|place_order|submitOrder|cancelOrder|closePosition|setLeverage)\s*\(",
+        )
+
+    def test_36_decision_dynamic_content_uses_text_content_not_inner_html(self) -> None:
+        self.assertNotIn("innerHTML", self.decision_js_text)
+        self.assertGreater(self.decision_js_text.count(".textContent"), 20)
+        self.assertIn("replaceChildren", self.decision_js_text)
+
     def test_preview_route_and_static_mount_remain_isolated(self) -> None:
         async_functions = [
             node for node in self.server_tree.body
@@ -503,6 +654,7 @@ class MobilePreviewV2Test(unittest.TestCase):
         self.assertNotIn("innerHTML", self.js_text)
         self.assertNotIn("innerHTML", self.foundation_text)
         self.assertNotIn("innerHTML", self.macro_adapter_text)
+        self.assertNotIn("innerHTML", self.decision_js_text)
         self.assertGreater(self.js_text.count(".textContent"), 50)
         self.assertIn("replaceChildren", self.js_text)
 
