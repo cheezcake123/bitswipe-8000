@@ -10,6 +10,14 @@ import threading
 
 import requests
 
+import config as _runtime_config
+from owner_auth import arm_fastapi_owner_security as _arm_owner_security
+
+
+# server.py imports this module before constructing app = FastAPI(). Arm the
+# already-imported FastAPI class so that app receives owner-only middleware.
+_arm_owner_security(_runtime_config)
+
 
 def _default_timeout() -> float:
     try:
