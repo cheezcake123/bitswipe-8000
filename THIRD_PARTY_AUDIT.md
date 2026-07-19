@@ -21,6 +21,20 @@ Observed from the production service virtual environment:
 - rank-bm25 0.2.2 — Apache 2.0 metadata
 - yfinance 1.4.1 — Apache metadata
 
+## Transitive packages flagged for manual review
+
+Observed by the expanded production virtual-environment inventory:
+
+- certifi 2026.5.20 — MPL-2.0
+- tqdm 4.67.3 — MPL-2.0 AND MIT
+- peewee 4.0.6 — package metadata reported UNKNOWN by the installed distribution
+
+The presence of MPL metadata is a review trigger, not a conclusion that the downstream application must use MPL. Distribution method, modification status, and notice/source obligations still need to be considered.
+
+Peewee 4.0.6 needs version-specific confirmation. Older Peewee 3.x package metadata identified MIT, but that historical metadata is not treated here as proof for 4.0.6.
+
+The audit script reports installed LICENSE/COPYING/NOTICE file paths for all manually flagged packages so the deployed artifacts can be inspected without guessing from historical metadata.
+
 ## Browser dependencies referenced by the legacy root page
 
 - Apache ECharts — Apache-2.0 — loaded from jsDelivr
@@ -33,8 +47,9 @@ The page also references Binance API hosts, jsDelivr, Google Fonts, and bitswipe
 
 ## Remaining work
 
-- review transitive Python packages flagged by the expanded inventory script
+- inspect installed license/notice paths for certifi, tqdm, and peewee 4.0.6
 - review static images, icons, screenshots, and copied frontend assets
 - determine whether deployment artifacts will redistribute third-party binaries or only reference/install them
 - prepare complete license texts and required notices for any redistributed components
+- recover or verify the upstream project's exact copyright/license notice before choosing the downstream project's own license
 - keep upstream project provenance separate from the downstream project's own license decision
