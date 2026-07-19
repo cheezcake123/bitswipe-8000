@@ -73,14 +73,14 @@ def direct_package_inventory() -> list[tuple[str, str, str, str]]:
     return rows
 
 
-def review_flags() -> list[tuple[str, str, str]]:
-    rows: list[tuple[str, str, str]] = []
+def review_flags() -> list[tuple[str, str, str, str]]:
+    rows: list[tuple[str, str, str, str]] = []
     for dist in installed_distributions().values():
         name = dist.metadata.get("Name") or "UNKNOWN"
         license_name = license_value(dist)
         upper = license_name.upper()
         if any(term in upper for term in REVIEW_TERMS):
-            rows.append((name, dist.version, license_name))
+            rows.append((name, dist.version, license_name, license_files(dist)))
     return sorted(rows, key=lambda row: row[0].lower())
 
 
@@ -113,11 +113,12 @@ def main() -> None:
     if not flags:
         print("(none detected by metadata keyword scan)")
     else:
-        print("| Package | Installed version | License metadata |")
-        print("| --- | --- | --- |")
-        for name, version, license_name in flags:
+        print("| Package | Installed version | License metadata | License/notice files |")
+        print("| --- | --- | --- | --- |")
+        for name, version, license_name, files in flags:
             safe_license = license_name.replace("|", "\\|")
-            print(f"| {name} | {version} | {safe_license} |")
+            safe_files = files.replace("|", "\\|")
+            print(f"| {name} | {version} | {safe_license} | {safe_files} |")
 
     print()
     print("Note: this keyword scan is an audit aid, not a legal conclusion.")
