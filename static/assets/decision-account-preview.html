@@ -19,8 +19,8 @@
   </div>
 
   <div class="owner-warning" role="note">
-    <strong>OWNER PREVIEW ONLY</strong>
-    <span>이 단계에는 인증이 아직 없습니다. 외부 공개 전에는 반드시 백엔드 인증으로 이 화면과 계좌 스트림을 보호해야 합니다.</span>
+    <strong>OWNER SESSION PROTECTED</strong>
+    <span>이 화면과 계좌·성과 API는 OWNER_PASSWORD로 시작한 서버 측 소유자 세션이 있어야 접근할 수 있습니다.</span>
   </div>
 
   <div class="account-app">
@@ -35,7 +35,7 @@
       </nav>
       <div class="sidebar-note">
         <strong>Private means protected</strong>
-        <p>프런트엔드에서 숨기는 것만으로는 보호가 아닙니다. Public Beta 전에 서버 인증이 필요합니다.</p>
+        <p>프런트엔드 숨김이 아니라 서버 측 OWNER 세션이 이 페이지와 민감한 계좌 엔드포인트를 보호합니다.</p>
       </div>
     </aside>
 
@@ -103,8 +103,8 @@
           </article>
           <article class="panel compact-panel warning-panel">
             <p class="eyebrow">AUTH BOUNDARY</p>
-            <h2>아직 인증되지 않음</h2>
-            <p>현재는 소유자용 프리뷰 구조만 분리한 단계입니다. 인터넷 공개 전에 `/api/account-stream`과 이 페이지를 서버 측에서 보호해야 합니다.</p>
+            <h2>OWNER 세션 보호 활성</h2>
+            <p>`/api/account-stream`, `/api/account`, `/api/performance`와 이 페이지는 유효한 HttpOnly 소유자 세션이 없으면 차단됩니다. HTTPS 전송 보호는 Public Beta 인프라 단계에서 별도로 완료해야 합니다.</p>
           </article>
         </aside>
       </section>
