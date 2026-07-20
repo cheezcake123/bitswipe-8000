@@ -15,6 +15,7 @@ from strategy_arena.forward_oos_selector_foundation import (
     ConflictManager,
     PositionRequest,
     RegimeDetectorV1,
+    SignalOverlapAnalyzer,
     StrategySelectorFoundation,
     load_default_registry,
 )
@@ -132,6 +133,13 @@ def test_regime_detector_is_multilabel() -> None:
     assert "HIGH_POSITIVE_FUNDING" in regime.tags
 
 
+def test_regime_timestamp_uses_decision_timestamp_when_present() -> None:
+    hourly = _hourly(0.0002)
+    hourly["decision_timestamp"] = hourly["timestamp"] + pd.Timedelta(hours=1) - pd.Timedelta(milliseconds=1)
+    regime = RegimeDetectorV1().detect(hourly)
+    assert regime.timestamp == hourly.iloc[-1]["decision_timestamp"]
+
+
 def test_selector_only_allows_funding_carry_and_requires_risk_gate() -> None:
     registry = load_default_registry()
     selector = StrategySelectorFoundation(registry)
@@ -142,6 +150,20 @@ def test_selector_only_allows_funding_carry_and_requires_risk_gate() -> None:
     assert [(row["strategy_name"], row["strategy_version"]) for row in eligible] == [("funding_carry", "v1")]
     assert all(row["hypothetical_only"] for row in allowed)
     assert all(not row["paper_order"] and not row["live_order"] for row in allowed)
+
+
+def test_pair_overlap_uses_perpetual_short_leg_for_direction() -> None:
+    ts = pd.Timestamp("2026-07-02T00:00:00Z")
+    signals = pd.DataFrame([
+        {"timestamp": ts, "strategy_name": "funding_carry", "signal": "PAIR_LONG_SPOT_SHORT_PERP"},
+        {"timestamp": ts, "strategy_name": "funding_extreme_short", "signal": "SHORT"},
+        {"timestamp": ts, "strategy_name": "other_long", "signal": "LONG"},
+    ])
+    overlap = SignalOverlapAnalyzer.summarize(signals)
+    carry_short = overlap[(overlap["strategy_a"] == "funding_carry") & (overlap["strategy_b"] == "funding_extreme_short")].iloc[0]
+    assert carry_short["same_direction_rate"] == 1.0
+    carry_long = overlap[(overlap["strategy_a"] == "funding_carry") & (overlap["strategy_b"] == "other_long")].iloc[0]
+    assert carry_long["opposite_direction_rate"] == 1.0
 
 
 def test_conflict_manager_detects_duplicate_and_opposite_perpetual_exposure() -> None:
