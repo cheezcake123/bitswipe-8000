@@ -1,5 +1,6 @@
 name: Strategy Arena Forward OOS Selector Foundation
 
+# Revalidated after PR #29 was retargeted to the default branch.
 on:
   pull_request:
     branches:
