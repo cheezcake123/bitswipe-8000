@@ -80,8 +80,8 @@ def fetch_vision_ohlcv(symbol: str, start: date, end: date, session: requests.Se
     df = pd.concat(frames, ignore_index=True)
     ts_unit = _epoch_unit(df["timestamp"])
     close_unit = _epoch_unit(df["close_time"])
-    df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"], errors="raise"), unit=ts_unit, utc=True)
-    df["close_time"] = pd.to_datetime(pd.to_numeric(df["close_time"], errors="raise"), unit=close_unit, utc=True)
+    df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"], errors="raise"), unit=ts_unit, utc=True).astype("datetime64[ms, UTC]")
+    df["close_time"] = pd.to_datetime(pd.to_numeric(df["close_time"], errors="raise"), unit=close_unit, utc=True).astype("datetime64[ms, UTC]")
     for col in ["open", "high", "low", "close", "volume"]:
         df[col] = pd.to_numeric(df[col], errors="raise")
     df["symbol"] = symbol
@@ -105,9 +105,9 @@ def fetch_vision_funding(symbol: str, start: date, end: date, session: requests.
     numeric_time = pd.to_numeric(df[time_col], errors="coerce")
     if numeric_time.notna().all():
         unit = "us" if numeric_time.abs().median() > 1e14 else "ms"
-        ts = pd.to_datetime(numeric_time.astype("int64"), unit=unit, utc=True)
+        ts = pd.to_datetime(numeric_time.astype("int64"), unit=unit, utc=True).astype("datetime64[ms, UTC]")
     else:
-        ts = pd.to_datetime(df[time_col], utc=True)
+        ts = pd.to_datetime(df[time_col], utc=True).astype("datetime64[ms, UTC]")
     out = pd.DataFrame({
         "timestamp": ts,
         "symbol": symbol,
@@ -116,7 +116,7 @@ def fetch_vision_funding(symbol: str, start: date, end: date, session: requests.
         "mark_price": pd.to_numeric(df["mark_price"], errors="coerce") if "mark_price" in df.columns else float("nan"),
     })
     start_ts = pd.Timestamp(start, tz="UTC")
-    end_ts = pd.Timestamp(end + timedelta(days=1), tz="UTC") - pd.Timedelta(microseconds=1)
+    end_ts = pd.Timestamp(end + timedelta(days=1), tz="UTC") - pd.Timedelta(milliseconds=1)
     out = out[(out["timestamp"] >= start_ts) & (out["timestamp"] <= end_ts)]
     out = out.drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
     validate_source_table(out, "timestamp", "funding")
@@ -130,7 +130,7 @@ def fetch_vision_oi(symbol: str, start: date, end: date, session: requests.Sessi
         url = f"{DAILY_BASE}/metrics/{symbol}/{symbol}-metrics-{ds}.zip"
         frames.append(_download_csv(url, session))
     df = pd.concat(frames, ignore_index=True)
-    df["timestamp"] = pd.to_datetime(df["create_time"], utc=True)
+    df["timestamp"] = pd.to_datetime(df["create_time"], utc=True).astype("datetime64[ms, UTC]")
     df["open_interest"] = pd.to_numeric(df["sum_open_interest"], errors="raise")
     df["open_interest_value"] = pd.to_numeric(df["sum_open_interest_value"], errors="coerce")
     out = df[["timestamp", "open_interest", "open_interest_value"]].copy()
