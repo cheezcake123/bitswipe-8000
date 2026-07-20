@@ -44,7 +44,10 @@ def test_frozen_parameters_unchanged() -> None:
 def test_backward_only_funding_alignment_and_actual_payment_hour() -> None:
     data = build_long_funding_dataset(_hourly(), _funding(), "BTCUSDT")
     assert data.loc[0, "funding_rate"] == 0.0001
-    assert data.loc[1, "funding_rate"] == -0.0002
+    # The 02:00 funding event must not be visible at the 01:59:59.999 decision time.
+    assert data.loc[1, "funding_rate"] == 0.0001
+    # It becomes available for the candle that closes after 02:00.
+    assert data.loc[2, "funding_rate"] == -0.0002
     assert data.loc[0, "funding_payment_rate"] == 0.0001
     assert data.loc[2, "funding_payment_rate"] == -0.0002
     report = validate_no_lookahead(data, _funding())
@@ -54,7 +57,6 @@ def test_backward_only_funding_alignment_and_actual_payment_hour() -> None:
 
 def test_direction_adapter_only_suppresses_opposite_entries(monkeypatch) -> None:
     adapter = DirectionFilteredFundingExtreme("LONG_ONLY")
-    original = FundingExtremeReversalV1.generate_signal
 
     def fake(self, history, symbol, current_position):
         from strategy_arena.strategies import Signal
@@ -64,4 +66,3 @@ def test_direction_adapter_only_suppresses_opposite_entries(monkeypatch) -> None
     history = _hourly().iloc[:1].copy()
     signal = adapter.generate_signal(history, "BTCUSDT", 0)
     assert signal.signal == SignalType.HOLD
-    monkeypatch.setattr(FundingExtremeReversalV1, "generate_signal", original)
