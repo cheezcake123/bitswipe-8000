@@ -47,8 +47,26 @@ def _robust_read_kline_zip(content: bytes) -> pd.DataFrame:
     return raw[basis_research.KLINE_COLUMNS].sort_values('timestamp').drop_duplicates('timestamp').reset_index(drop=True)
 
 
-# backfill_monthly() resolves this module global at execution time.
+def _funding_for_trade_fixed(funding: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, qty: float, perp_prices: pd.DataFrame) -> tuple[float, float]:
+    if funding.empty:
+        return 0.0, 0.0
+    events = funding[(funding['timestamp'] > start) & (funding['timestamp'] <= end)].copy().reset_index(drop=True)
+    if events.empty:
+        return 0.0, 0.0
+    if events['mark_price'].isna().any():
+        marks = pd.merge_asof(
+            events[['timestamp']].sort_values('timestamp'),
+            perp_prices[['timestamp', 'perp_close']].sort_values('timestamp'),
+            on='timestamp', direction='backward'
+        )['perp_close'].reset_index(drop=True)
+        events['mark_price'] = events['mark_price'].reset_index(drop=True).fillna(marks)
+    cash = qty * events['mark_price'] * events['funding_rate']
+    return float(cash[cash > 0].sum()), float((-cash[cash < 0]).sum())
+
+
+# The imported functions resolve these module globals at runtime.
 basis_research._read_kline_zip = _robust_read_kline_zip
+basis_execution._funding_for_trade = _funding_for_trade_fixed
 
 
 if __name__ == '__main__':
