@@ -7,6 +7,7 @@ on:
     paths:
       - 'strategy_arena/volatility_compression_v1.py'
       - 'strategy_arena/volatility_compression_backtest.py'
+      - 'strategy_arena/volatility_compression_fast_runner.py'
       - 'strategy_arena/volatility_compression_research.py'
       - 'tests/test_volatility_compression_v1.py'
       - '.github/workflows/strategy-arena-volatility-compression-v1.yml'
@@ -42,7 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m strategy_arena.volatility_compression_backtest \
+          python -m strategy_arena.volatility_compression_fast_runner \
             --symbol BTCUSDT \
             --start-month 2019-09 \
             --end-month 2026-06 \
