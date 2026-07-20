@@ -101,13 +101,15 @@ class RegimeSnapshot:
 
 
 class RegimeDetectorV1:
-    """Explainable, backward-only multi-label regime detector."""
+    """Explainable multi-label detector using only rows available through the latest decision time."""
 
     def detect(self, hourly: pd.DataFrame) -> RegimeSnapshot:
         if hourly.empty:
             raise ValueError("hourly market history is empty")
         data = hourly.copy().sort_values("timestamp").reset_index(drop=True)
-        ts = pd.Timestamp(data.iloc[-1]["timestamp"])
+        last = data.iloc[-1]
+        # A regime using the final candle close becomes available at decision_timestamp, not candle open.
+        ts = pd.Timestamp(last["decision_timestamp"] if "decision_timestamp" in data.columns else last["timestamp"])
         close = pd.to_numeric(data["close"], errors="coerce")
         funding = pd.to_numeric(
             data.get("funding_rate", pd.Series(index=data.index, dtype=float)),
@@ -172,7 +174,7 @@ class PositionRequest:
 
 
 class ConflictManager:
-    """Detect conflicts and duplicate exposure. Never resolves or changes a strategy signal."""
+    """Detect duplicate/conflicting leg exposure without resolving or changing signals."""
 
     @staticmethod
     def analyze(requests: Iterable[PositionRequest]) -> dict:
@@ -242,7 +244,7 @@ class StrategySelectorFoundation:
 
 
 class AppendOnlyLeagueStore:
-    """Immutable Parquet batches for forward-only supervision records."""
+    """Immutable Parquet batches for Forward OOS supervision records."""
 
     DATASETS = {
         "signals",
@@ -285,15 +287,7 @@ class AppendOnlyLeagueStore:
         if "timestamp" not in frame.columns:
             frame["timestamp"] = pd.Timestamp(datetime.now(timezone.utc)).floor("ms")
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True).astype("datetime64[ms, UTC]")
-        if dataset in {
-            "signals",
-            "hypothetical_fills",
-            "hypothetical_trades",
-            "selector_decisions",
-            "conflicts",
-            "overlap",
-            "scorecards",
-        } and (frame["timestamp"] < FORWARD_OOS_START_UTC).any():
+        if (frame["timestamp"] < FORWARD_OOS_START_UTC).any():
             raise ValueError("Historical/backtest rows cannot be written into Forward OOS League")
         frame["recorded_at_utc"] = pd.Timestamp(datetime.now(timezone.utc)).floor("ms")
         frame["forward_oos_start_utc"] = FORWARD_OOS_START_UTC
@@ -323,6 +317,15 @@ class AppendOnlyLeagueStore:
 class SignalOverlapAnalyzer:
     ACTIVE_SIGNALS = {"LONG", "SHORT", "PAIR_LONG_SPOT_SHORT_PERP", "ELIGIBLE"}
 
+    @staticmethod
+    def _perpetual_direction(signal: str) -> int:
+        # Pair carry/basis is delta-neutral overall but explicitly requires a Perpetual SHORT leg.
+        if signal in {"SHORT", "PAIR_LONG_SPOT_SHORT_PERP"}:
+            return -1
+        if signal == "LONG":
+            return 1
+        return 0
+
     @classmethod
     def summarize(cls, signals: pd.DataFrame) -> pd.DataFrame:
         columns = [
@@ -334,6 +337,7 @@ class SignalOverlapAnalyzer:
             "a_subset_of_b_rate",
             "sample_a",
             "sample_b",
+            "direction_basis",
         ]
         if signals.empty:
             return pd.DataFrame(columns=columns)
@@ -352,9 +356,8 @@ class SignalOverlapAnalyzer:
                     amap = a.set_index("timestamp")["signal"]
                     bmap = b.set_index("timestamp")["signal"]
                     for ts in intersection:
-                        sa, sb = str(amap.loc[ts]), str(bmap.loc[ts])
-                        da = -1 if sa == "SHORT" else 1 if sa == "LONG" else 0
-                        db = -1 if sb == "SHORT" else 1 if sb == "LONG" else 0
+                        da = cls._perpetual_direction(str(amap.loc[ts]))
+                        db = cls._perpetual_direction(str(bmap.loc[ts]))
                         if da and db and da == db:
                             same += 1
                         elif da and db and da != db:
@@ -369,6 +372,7 @@ class SignalOverlapAnalyzer:
                         "a_subset_of_b_rate": len(intersection) / len(aset) if aset else 0.0,
                         "sample_a": len(aset),
                         "sample_b": len(bset),
+                        "direction_basis": "perpetual_leg_for_pair_strategies",
                     }
                 )
         return pd.DataFrame(rows, columns=columns)
