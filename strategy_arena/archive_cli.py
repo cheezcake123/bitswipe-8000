@@ -15,7 +15,8 @@ from strategy_arena.data import build_research_dataset, save_parquet, validate_r
 from strategy_arena.reporting import save_comparison, save_result
 from strategy_arena.strategies import FundingExtremeReversalV1, OIDivergenceV1, OIMomentumV1
 
-BASE = "https://data.binance.vision/data/futures/um/daily"
+DAILY_BASE = "https://data.binance.vision/data/futures/um/daily"
+MONTHLY_BASE = "https://data.binance.vision/data/futures/um/monthly"
 KLINE_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume", "close_time", "quote_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"]
 
 
@@ -45,6 +46,14 @@ def _dates(start: date, end: date):
         current += timedelta(days=1)
 
 
+def _months(start: date, end: date):
+    current = date(start.year, start.month, 1)
+    final = date(end.year, end.month, 1)
+    while current <= final:
+        yield current.year, current.month
+        current = date(current.year + (current.month == 12), 1 if current.month == 12 else current.month + 1, 1)
+
+
 def _epoch_unit(series: pd.Series) -> str:
     numeric = pd.to_numeric(series, errors="raise")
     return "us" if numeric.abs().median() > 1e14 else "ms"
@@ -54,7 +63,7 @@ def fetch_vision_ohlcv(symbol: str, start: date, end: date, session: requests.Se
     frames = []
     for day in _dates(start, end):
         ds = day.isoformat()
-        url = f"{BASE}/klines/{symbol}/1h/{symbol}-1h-{ds}.zip"
+        url = f"{DAILY_BASE}/klines/{symbol}/1h/{symbol}-1h-{ds}.zip"
         content = _download_archive_bytes(url, session)
         raw = _csv_from_zip(content)
         if "open_time" in raw.columns:
@@ -66,7 +75,6 @@ def fetch_vision_ohlcv(symbol: str, start: date, end: date, session: requests.Se
                 "taker_buy_quote_asset_volume": "taker_buy_quote",
             })
         elif "timestamp" not in raw.columns:
-            # Legacy headerless archives: re-read without treating the first data row as a header.
             raw = _csv_from_zip(content, header=None, names=KLINE_COLUMNS)
         frames.append(raw)
     df = pd.concat(frames, ignore_index=True)
@@ -85,19 +93,10 @@ def fetch_vision_ohlcv(symbol: str, start: date, end: date, session: requests.Se
 
 def fetch_vision_funding(symbol: str, start: date, end: date, session: requests.Session) -> pd.DataFrame:
     frames = []
-    missing_days = []
-    for day in _dates(start, end):
-        ds = day.isoformat()
-        url = f"{BASE}/fundingRate/{symbol}/{symbol}-fundingRate-{ds}.zip"
-        try:
-            frames.append(_download_csv(url, session))
-        except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 404:
-                missing_days.append(ds)
-                continue
-            raise
-    if not frames:
-        raise RuntimeError(f"No fundingRate archives available for requested period; missing={missing_days[:5]}")
+    for year, month in _months(start, end):
+        ym = f"{year:04d}-{month:02d}"
+        url = f"{MONTHLY_BASE}/fundingRate/{symbol}/{symbol}-fundingRate-{ym}.zip"
+        frames.append(_download_csv(url, session))
     df = pd.concat(frames, ignore_index=True)
     time_col = next((c for c in ["calc_time", "fundingTime", "funding_time", "timestamp"] if c in df.columns), None)
     rate_col = next((c for c in ["last_funding_rate", "fundingRate", "funding_rate"] if c in df.columns), None)
@@ -115,7 +114,11 @@ def fetch_vision_funding(symbol: str, start: date, end: date, session: requests.
         "source": "binance_vision_usdm",
         "funding_rate": pd.to_numeric(df[rate_col], errors="raise"),
         "mark_price": pd.to_numeric(df["mark_price"], errors="coerce") if "mark_price" in df.columns else float("nan"),
-    }).drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
+    })
+    start_ts = pd.Timestamp(start, tz="UTC")
+    end_ts = pd.Timestamp(end + timedelta(days=1), tz="UTC") - pd.Timedelta(microseconds=1)
+    out = out[(out["timestamp"] >= start_ts) & (out["timestamp"] <= end_ts)]
+    out = out.drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
     validate_source_table(out, "timestamp", "funding")
     return out
 
@@ -124,7 +127,7 @@ def fetch_vision_oi(symbol: str, start: date, end: date, session: requests.Sessi
     frames = []
     for day in _dates(start, end):
         ds = day.isoformat()
-        url = f"{BASE}/metrics/{symbol}/{symbol}-metrics-{ds}.zip"
+        url = f"{DAILY_BASE}/metrics/{symbol}/{symbol}-metrics-{ds}.zip"
         frames.append(_download_csv(url, session))
     df = pd.concat(frames, ignore_index=True)
     df["timestamp"] = pd.to_datetime(df["create_time"], utc=True)
@@ -141,8 +144,8 @@ def fetch_vision_oi(symbol: str, start: date, end: date, session: requests.Sessi
 def main() -> None:
     parser = argparse.ArgumentParser(description="BitSwipe Strategy Arena Binance Vision E2E backtest (read-only, no live trading)")
     parser.add_argument("--symbol", default="BTCUSDT")
-    parser.add_argument("--start", default="2026-06-21")
-    parser.add_argument("--end", default="2026-07-18")
+    parser.add_argument("--start", default="2026-06-03")
+    parser.add_argument("--end", default="2026-06-30")
     parser.add_argument("--data-dir", default="data/arena")
     parser.add_argument("--output-dir", default="data/arena/results")
     parser.add_argument("--leverage", type=float, default=2.0)
