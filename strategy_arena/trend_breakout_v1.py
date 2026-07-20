@@ -26,6 +26,7 @@ class VolatilityAdjustedTrendBreakoutV1(BaseStrategy):
     max_position_fraction: float = 1.0
     max_leverage: float = 2.0
     bars_per_day: int = 24
+    uses_precomputed_features: bool = True
 
     @property
     def max_lookback_bars(self) -> int:
