@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from strategy_arena.backtest import BacktestConfig, BacktestEngine, buy_and_hold_metrics, chronological_split, save_comparison, save_result
+from strategy_arena.backtest import BacktestConfig, BacktestEngine, buy_and_hold_metrics, chronological_split
 from strategy_arena.data import BinanceHistoricalClient, build_research_dataset, save_parquet, validate_research_dataset
+from strategy_arena.reporting import save_comparison, save_result
 from strategy_arena.strategies import FundingExtremeReversalV1, OIDivergenceV1, OIMomentumV1
 
 
