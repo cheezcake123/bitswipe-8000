@@ -1,0 +1,25 @@
+[Unit]
+Description=BitSwipe Strategy Arena Market Data Collector (research only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__BITSWIPE_USER__
+Group=__BITSWIPE_GROUP__
+WorkingDirectory=__BITSWIPE_ROOT__
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/bitswipe/market-collector.env
+ExecStart=__BITSWIPE_PYTHON__ -m strategy_arena.collector_daemon --symbol ${BITSWIPE_COLLECTOR_SYMBOL} --store-root ${BITSWIPE_MARKET_STORE_ROOT} --with-liquidations
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=__BITSWIPE_ROOT__/data/arena/market_store
+
+[Install]
+WantedBy=multi-user.target

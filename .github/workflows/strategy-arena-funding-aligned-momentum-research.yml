@@ -1,0 +1,51 @@
+name: Strategy Arena Funding-Aligned Momentum Research
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/funding_aligned_momentum_research.py'
+      - '.github/workflows/strategy-arena-funding-aligned-momentum-research.yml'
+  workflow_dispatch:
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run fixed-horizon Funding-Aligned Momentum relationship study
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/arena
+          python -m strategy_arena.funding_aligned_momentum_research \
+            --symbol BTCUSDT \
+            --start-month 2019-09 \
+            --end-month 2026-06 \
+            --evaluation-start 2020-01-01T00:00:00Z \
+            --output-dir data/arena/funding_aligned_momentum_research \
+            --workers 6 2>&1 | tee data/arena/funding_aligned_momentum_research.log
+      - name: Show summary
+        if: always()
+        run: |
+          cat data/arena/funding_aligned_momentum_research/summary.json || true
+          cat data/arena/funding_aligned_momentum_research/momentum_horizon_comparison.csv || true
+      - name: Upload research
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-funding-aligned-momentum-research
+          path: |
+            data/arena/funding_aligned_momentum_research
+            data/arena/funding_aligned_momentum_research.log
+          retention-days: 90
+          if-no-files-found: warn

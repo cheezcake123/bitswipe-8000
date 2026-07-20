@@ -1,0 +1,49 @@
+name: Strategy Arena Basis Cost Survival
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/basis_execution.py'
+      - 'strategy_arena/basis_execution_runner.py'
+      - 'strategy_arena/basis_research.py'
+      - 'strategy_arena/market_store.py'
+      - '.github/workflows/strategy-arena-basis-cost-survival.yml'
+  workflow_dispatch:
+
+jobs:
+  basis-cost-survival:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run fixed-hypothesis two-leg execution simulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/arena
+          python -m strategy_arena.basis_execution_runner \
+            --symbol BTCUSDT \
+            --start-month 2020-01 \
+            --end-month 2026-06 \
+            --store-root data/arena/market_store \
+            --output-dir data/arena/basis_execution \
+            --workers 6 2>&1 | tee data/arena/basis_execution.log
+      - name: Show summary
+        if: always()
+        run: cat data/arena/basis_execution/basis_cash_and_carry_summary.json || true
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-basis-cost-survival
+          path: |
+            data/arena/basis_execution
+            data/arena/basis_execution.log
+          if-no-files-found: warn
