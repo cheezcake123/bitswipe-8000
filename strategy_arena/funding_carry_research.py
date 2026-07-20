@@ -52,7 +52,7 @@ def _attach_market_context(funding: pd.DataFrame, featured: pd.DataFrame) -> pd.
         "timestamp", "basis_bps", "basis_pct", "spot_close", "perp_close",
         "vol_regime", "trend_regime",
     ]].sort_values("timestamp")
-    out = pd.merge_asof(
+    return pd.merge_asof(
         funding.sort_values("timestamp"),
         market,
         on="timestamp",
@@ -60,17 +60,17 @@ def _attach_market_context(funding: pd.DataFrame, featured: pd.DataFrame) -> pd.
         allow_exact_matches=True,
         tolerance=pd.Timedelta(minutes=1),
     )
-    return out
 
 
 def _add_forward_relationships(events: pd.DataFrame) -> pd.DataFrame:
     out = events.copy().reset_index(drop=True)
-    ts_ns = out["timestamp"].astype("int64").to_numpy()
+    # Normalize explicitly to nanoseconds before searchsorted so horizon units match.
+    ts_ns = out["timestamp"].astype("datetime64[ns, UTC]").astype("int64").to_numpy()
     rates = out["funding_rate"].to_numpy(dtype=float)
+    prefix = np.concatenate([[0.0], np.cumsum(rates)])
     for hours in (8, 24, 72):
         horizon_ns = int(pd.Timedelta(hours=hours).value)
         ends = np.searchsorted(ts_ns, ts_ns + horizon_ns, side="right")
-        prefix = np.concatenate([[0.0], np.cumsum(rates)])
         # Exclude the current event: only funding that would be received after observing it.
         out[f"future_cumulative_funding_{hours}h"] = [prefix[e] - prefix[i + 1] for i, e in enumerate(ends)]
     return out
@@ -116,8 +116,7 @@ def _episode_end_context(episodes: pd.DataFrame, featured: pd.DataFrame) -> pd.D
     if pos.empty:
         return pos
     for label, delta in (("pre_8h", -pd.Timedelta(hours=8)), ("post_8h", pd.Timedelta(hours=8)), ("post_24h", pd.Timedelta(hours=24))):
-        times = pos["end"] + delta
-        vals = _basis_at_times(featured, times)
+        vals = _basis_at_times(featured, pos["end"] + delta)
         vals.index = pos.index
         pos[f"basis_{label}_bps"] = vals
     pos["basis_change_end_to_post_8h_bps"] = pos["basis_post_8h_bps"] - pos["basis_end_bps"]
@@ -153,11 +152,8 @@ def run_research(aligned: pd.DataFrame, funding: pd.DataFrame, config: FundingCa
     events["funding_regime"] = np.where(events["funding_rate"] >= config.high_funding_rate, "HIGH_FUNDING", "NORMAL_FUNDING")
     events["year"] = events["timestamp"].dt.year
 
-    # Basis change after each realized funding event. These are descriptive, not trading fills.
-    basis_lookup = featured.set_index("timestamp")["basis_bps"]
     for hours in (1, 8, 24):
-        target = events["timestamp"] + pd.Timedelta(hours=hours)
-        future = _basis_at_times(featured, target)
+        future = _basis_at_times(featured, events["timestamp"] + pd.Timedelta(hours=hours))
         future.index = events.index
         events[f"future_basis_change_{hours}h_bps"] = future - events["basis_bps"]
 
