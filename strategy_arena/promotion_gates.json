@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "automatic_promotion_enabled": false,
+  "requires_explicit_user_approval": true,
+  "paper_trading_auto_start_enabled": false,
+  "live_trading_enabled": false,
+  "gates": {
+    "C_to_B": {
+      "minimum_forward_oos_period_days": null,
+      "minimum_hypothetical_trades": null,
+      "minimum_net_profit_factor": null,
+      "maximum_drawdown_limit": null,
+      "minimum_recent_net_edge": null,
+      "maximum_top_trade_concentration": null,
+      "regime_stability_requirement": null,
+      "cost_survival_required": true,
+      "manual_review_required": true
+    },
+    "B_to_A": {
+      "minimum_forward_oos_period_days": null,
+      "minimum_hypothetical_trades": null,
+      "minimum_net_profit_factor": null,
+      "maximum_drawdown_limit": null,
+      "minimum_recent_net_edge": null,
+      "maximum_top_trade_concentration": null,
+      "regime_stability_requirement": null,
+      "cost_survival_required": true,
+      "manual_review_required": true
+    },
+    "Paper_Eligible": {
+      "minimum_forward_oos_period_days": null,
+      "minimum_hypothetical_trades": null,
+      "operational_stress_test_required": true,
+      "conflict_manager_review_required": true,
+      "risk_gate_review_required": true,
+      "manual_user_approval_required": true
+    }
+  },
+  "note": "Numeric pass thresholds are intentionally unset. They must be chosen prospectively and approved by the user; they must not be fitted to existing OOS results."
+}
