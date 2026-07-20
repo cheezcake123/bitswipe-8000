@@ -1,0 +1,55 @@
+name: Strategy Arena Basis Research
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/basis_research.py'
+      - 'strategy_arena/market_store.py'
+      - '.github/workflows/strategy-arena-basis-research.yml'
+  workflow_dispatch:
+
+jobs:
+  basis-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Backfill official Binance 1m spot and perpetual data and run basis research
+        run: |
+          mkdir -p data/arena
+          python -m strategy_arena.basis_research \
+            --symbol BTCUSDT \
+            --start-month 2019-09 \
+            --end-month 2026-06 \
+            --store-root data/arena/market_store \
+            --output-dir data/arena/basis_research \
+            --workers 6 2>&1 | tee data/arena/basis_research.log
+      - name: Show research summary
+        if: always()
+        run: |
+          cat data/arena/basis_research/basis_research_summary.json || true
+          du -sh data/arena/market_store data/arena/basis_research || true
+      - name: Upload basis research results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-basis-research
+          path: |
+            data/arena/basis_research
+            data/arena/basis_research.log
+          if-no-files-found: warn
+      - name: Upload append-only backfill store
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-basis-market-store
+          path: data/arena/market_store
+          retention-days: 30
+          if-no-files-found: error
