@@ -2,20 +2,25 @@ from __future__ import annotations
 
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 
 from strategy_arena.basis_execution import fetch_funding
 from strategy_arena.basis_research import (
     BasisResearchConfig,
-    AppendOnlyMarketStore,
+    SPOT_MONTHLY,
+    FUTURES_MONTHLY,
+    _month_range,
     add_research_features,
-    backfill_monthly,
     build_aligned_basis,
 )
+from strategy_arena.market_store import AppendOnlyMarketStore
+from strategy_arena.trend_breakout_research import _read_kline_zip
 
 
 @dataclass(frozen=True)
@@ -24,7 +29,7 @@ class FundingCarryResearchConfig:
     start_month: str = "2019-09"
     end_month: str = "2026-06"
     analysis_start: str = "2020-01-01T00:00:00Z"
-    high_funding_rate: float = 0.0001  # 1 bp per realized funding event; descriptive bucket, not optimized.
+    high_funding_rate: float = 0.0001  # 1 bp/event descriptive bucket only; not a chosen trading threshold yet.
 
 
 def _safe(value):
@@ -36,6 +41,55 @@ def _safe(value):
         value = float(value)
         return None if not np.isfinite(value) else value
     return value
+
+
+def _download_archive(url: str) -> pd.DataFrame | None:
+    r = requests.get(url, timeout=60)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return _read_kline_zip(r.content)
+
+
+def _download_pair(symbol: str, month: str) -> tuple[str, pd.DataFrame | None, pd.DataFrame | None]:
+    spot_url = f"{SPOT_MONTHLY}/{symbol}/1m/{symbol}-1m-{month}.zip"
+    perp_url = f"{FUTURES_MONTHLY}/{symbol}/1m/{symbol}-1m-{month}.zip"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        spot = pool.submit(_download_archive, spot_url)
+        perp = pool.submit(_download_archive, perp_url)
+        return month, spot.result(), perp.result()
+
+
+def backfill_monthly_robust(config: BasisResearchConfig, store: AppendOnlyMarketStore, workers: int = 6) -> dict:
+    months = _month_range(config.start_month, config.end_month)
+    stats = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_download_pair, config.symbol, month) for month in months]
+        for future in as_completed(futures):
+            month, spot, perp = future.result()
+            row = {"month": month, "spot_rows": 0, "perp_rows": 0, "spot_written": 0, "perp_written": 0}
+            if spot is not None:
+                spot = spot.assign(symbol=config.symbol, source="binance_vision_spot")
+                payload = spot[["timestamp", "close_time", "symbol", "source", "open", "high", "low", "close", "volume"]]
+                row["spot_rows"] = len(payload)
+                row["spot_written"] = store.append("spot_ohlcv", payload)["written"]
+            if perp is not None:
+                perp = perp.assign(symbol=config.symbol, source="binance_vision_usdm")
+                payload = perp[["timestamp", "close_time", "symbol", "source", "open", "high", "low", "close", "volume"]]
+                row["perp_rows"] = len(payload)
+                row["perp_written"] = store.append("futures_ohlcv", payload)["written"]
+            stats.append(row)
+    stats.sort(key=lambda x: x["month"])
+    return {
+        "months_requested": len(months),
+        "months_with_spot": sum(x["spot_rows"] > 0 for x in stats),
+        "months_with_perp": sum(x["perp_rows"] > 0 for x in stats),
+        "spot_rows_downloaded": sum(x["spot_rows"] for x in stats),
+        "perp_rows_downloaded": sum(x["perp_rows"] for x in stats),
+        "spot_rows_written": sum(x["spot_written"] for x in stats),
+        "perp_rows_written": sum(x["perp_written"] for x in stats),
+        "monthly": stats,
+    }
 
 
 def _funding_bucket(rate: pd.Series) -> pd.Series:
@@ -64,14 +118,12 @@ def _attach_market_context(funding: pd.DataFrame, featured: pd.DataFrame) -> pd.
 
 def _add_forward_relationships(events: pd.DataFrame) -> pd.DataFrame:
     out = events.copy().reset_index(drop=True)
-    # Normalize explicitly to nanoseconds before searchsorted so horizon units match.
     ts_ns = out["timestamp"].astype("datetime64[ns, UTC]").astype("int64").to_numpy()
     rates = out["funding_rate"].to_numpy(dtype=float)
     prefix = np.concatenate([[0.0], np.cumsum(rates)])
     for hours in (8, 24, 72):
         horizon_ns = int(pd.Timedelta(hours=hours).value)
         ends = np.searchsorted(ts_ns, ts_ns + horizon_ns, side="right")
-        # Exclude the current event: only funding that would be received after observing it.
         out[f"future_cumulative_funding_{hours}h"] = [prefix[e] - prefix[i + 1] for i, e in enumerate(ends)]
     return out
 
@@ -227,7 +279,7 @@ def main() -> None:
 
     config = FundingCarryResearchConfig(symbol=args.symbol, start_month=args.start_month, end_month=args.end_month)
     store = AppendOnlyMarketStore(args.store_root)
-    backfill = backfill_monthly(
+    backfill = backfill_monthly_robust(
         BasisResearchConfig(symbol=args.symbol, start_month=args.start_month, end_month=args.end_month),
         store,
         workers=args.workers,
