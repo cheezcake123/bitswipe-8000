@@ -32,19 +32,24 @@ def chronological_split(df: pd.DataFrame, train: float = 0.6, validation: float 
     ]
 
 
-def calculate_metrics(equity: pd.DataFrame, trades: pd.DataFrame, initial_equity: float) -> dict:
+def calculate_metrics(
+    equity: pd.DataFrame,
+    trades: pd.DataFrame,
+    initial_equity: float,
+    periods_per_year: float = HOURS_PER_YEAR,
+) -> dict:
     if equity.empty:
         return {}
     end_equity = float(equity.iloc[-1]["equity"])
     total_return = end_equity / initial_equity - 1.0
     periods = max(len(equity) - 1, 1)
-    annualized_return = (1 + total_return) ** (HOURS_PER_YEAR / periods) - 1 if total_return > -1 else -1.0
+    annualized_return = (1 + total_return) ** (periods_per_year / periods) - 1 if total_return > -1 else -1.0
     returns = equity["equity"].pct_change().replace([np.inf, -np.inf], np.nan).dropna()
     std = float(returns.std(ddof=0)) if len(returns) else 0.0
-    sharpe = float(returns.mean() / std * math.sqrt(HOURS_PER_YEAR)) if std > 0 else 0.0
+    sharpe = float(returns.mean() / std * math.sqrt(periods_per_year)) if std > 0 else 0.0
     downside = returns[returns < 0]
     downside_std = float(downside.std(ddof=0)) if len(downside) else 0.0
-    sortino = float(returns.mean() / downside_std * math.sqrt(HOURS_PER_YEAR)) if downside_std > 0 else 0.0
+    sortino = float(returns.mean() / downside_std * math.sqrt(periods_per_year)) if downside_std > 0 else 0.0
     peak = equity["equity"].cummax()
     drawdown = equity["equity"] / peak - 1.0
     if trades.empty:
@@ -61,6 +66,8 @@ def calculate_metrics(equity: pd.DataFrame, trades: pd.DataFrame, initial_equity
         for value in pnl:
             streak = streak + 1 if value < 0 else 0
             max_consecutive_losses = max(max_consecutive_losses, streak)
+    turnover_notional = float(trades["turnover_notional"].sum()) if not trades.empty and "turnover_notional" in trades.columns else 0.0
+    holding_hours = float(trades["holding_hours"].mean()) if not trades.empty and "holding_hours" in trades.columns else 0.0
     return {
         "total_return": total_return,
         "annualized_return": annualized_return,
@@ -75,9 +82,12 @@ def calculate_metrics(equity: pd.DataFrame, trades: pd.DataFrame, initial_equity
         "number_of_trades": int(len(trades)),
         "maximum_consecutive_losses": int(max_consecutive_losses),
         "exposure": float((equity["position"] != 0).mean()),
+        "turnover": turnover_notional / initial_equity,
         "fee_cost": float(trades["fee_cost"].sum()) if not trades.empty else 0.0,
+        "slippage_cost": float(trades["slippage_cost"].sum()) if not trades.empty and "slippage_cost" in trades.columns else 0.0,
         "funding_cost": float(trades["funding_cost"].sum()) if not trades.empty else 0.0,
         "funding_income": float(trades["funding_income"].sum()) if not trades.empty else 0.0,
+        "average_holding_hours": holding_hours,
     }
 
 
@@ -89,6 +99,7 @@ class BacktestConfig:
     taker_fee_rate: float = 0.0005
     slippage_rate: float = 0.0005
     maintenance_margin_rate: float = 0.005
+    periods_per_year: float = HOURS_PER_YEAR
 
 
 @dataclass
@@ -109,45 +120,66 @@ class BacktestEngine:
         cfg = self.config
         if cfg.leverage < 1:
             raise ValueError("leverage must be >= 1")
+        strategy_max_leverage = getattr(strategy, "max_leverage", None)
+        if strategy_max_leverage is not None and cfg.leverage > float(strategy_max_leverage):
+            raise ValueError(f"configured leverage {cfg.leverage} exceeds strategy max_leverage {strategy_max_leverage}")
         start = pd.Timestamp(evaluation_start or data.iloc[0]["timestamp"])
         end = pd.Timestamp(evaluation_end or data.iloc[-1]["timestamp"])
         equity = cfg.initial_equity
         position = 0
         units = 0.0
         entry_price = 0.0
+        entry_raw_price = 0.0
         entry_time = None
         entry_equity = 0.0
         current_trade_fee = 0.0
+        current_slippage_cost = 0.0
+        current_turnover_notional = 0.0
         current_funding_cost = 0.0
         current_funding_income = 0.0
         pending_signal = SignalType.HOLD
         pending_reason = ""
+        pending_size_hint: float | None = None
         trades: list[dict] = []
         signals: list[dict] = []
         curve: list[dict] = []
 
         def close_position(ts, raw_price, reason, liquidation=False):
-            nonlocal equity, position, units, entry_price, entry_time, entry_equity
-            nonlocal current_trade_fee, current_funding_cost, current_funding_income
+            nonlocal equity, position, units, entry_price, entry_raw_price, entry_time, entry_equity
+            nonlocal current_trade_fee, current_slippage_cost, current_turnover_notional
+            nonlocal current_funding_cost, current_funding_income
             if position == 0:
                 return
+            raw_price = float(raw_price)
             exit_price = raw_price * (1 - cfg.slippage_rate if position > 0 else 1 + cfg.slippage_rate)
-            gross = position * units * (exit_price - entry_price)
-            exit_fee = abs(units * exit_price) * cfg.taker_fee_rate
-            equity += gross - exit_fee
+            pre_cost_gross = position * units * (raw_price - entry_raw_price)
+            after_slippage_gross = position * units * (exit_price - entry_price)
+            exit_slippage = abs(units * (exit_price - raw_price))
+            exit_notional = abs(units * exit_price)
+            exit_fee = exit_notional * cfg.taker_fee_rate
+            equity += after_slippage_gross - exit_fee
             current_trade_fee += exit_fee
+            current_slippage_cost += exit_slippage
+            current_turnover_notional += exit_notional
             net = equity - entry_equity
+            holding_hours = float((pd.Timestamp(ts) - pd.Timestamp(entry_time)) / pd.Timedelta(hours=1)) if entry_time is not None else 0.0
             trades.append({
                 "entry_time": entry_time,
                 "exit_time": ts,
                 "side": "LONG" if position > 0 else "SHORT",
                 "entry_price": entry_price,
                 "exit_price": exit_price,
+                "entry_raw_price": entry_raw_price,
+                "exit_raw_price": raw_price,
                 "units": units,
-                "gross_pnl": gross,
+                "pre_cost_gross_pnl": pre_cost_gross,
+                "gross_pnl": after_slippage_gross,
+                "slippage_cost": current_slippage_cost,
                 "fee_cost": current_trade_fee,
                 "funding_cost": current_funding_cost,
                 "funding_income": current_funding_income,
+                "turnover_notional": current_turnover_notional,
+                "holding_hours": holding_hours,
                 "net_pnl": net,
                 "exit_reason": reason,
                 "liquidation": liquidation,
@@ -155,9 +187,13 @@ class BacktestEngine:
             position = 0
             units = 0.0
             entry_price = 0.0
+            entry_raw_price = 0.0
             entry_time = None
             entry_equity = 0.0
-            current_trade_fee = current_funding_cost = current_funding_income = 0.0
+            current_trade_fee = 0.0
+            current_slippage_cost = 0.0
+            current_turnover_notional = 0.0
+            current_funding_cost = current_funding_income = 0.0
 
         for i, row in data.iterrows():
             ts = row["timestamp"]
@@ -173,16 +209,23 @@ class BacktestEngine:
                     if position != 0 and position != desired:
                         close_position(ts, float(row["open"]), "reverse_signal")
                     if position == 0:
-                        fill = float(row["open"]) * (1 + cfg.slippage_rate if desired > 0 else 1 - cfg.slippage_rate)
-                        notional = equity * cfg.position_size * cfg.leverage
-                        units = notional / fill
-                        entry_fee = notional * cfg.taker_fee_rate
-                        entry_equity = equity
-                        equity -= entry_fee
-                        current_trade_fee = entry_fee
-                        position = desired
-                        entry_price = fill
-                        entry_time = ts
+                        raw_open = float(row["open"])
+                        fill = raw_open * (1 + cfg.slippage_rate if desired > 0 else 1 - cfg.slippage_rate)
+                        size_fraction = cfg.position_size if pending_size_hint is None else min(cfg.position_size, max(0.0, float(pending_size_hint)))
+                        notional = equity * size_fraction * cfg.leverage
+                        if notional > 0:
+                            units = notional / fill
+                            entry_fee = notional * cfg.taker_fee_rate
+                            entry_slippage = abs(units * (fill - raw_open))
+                            entry_equity = equity
+                            equity -= entry_fee
+                            current_trade_fee = entry_fee
+                            current_slippage_cost = entry_slippage
+                            current_turnover_notional = notional
+                            position = desired
+                            entry_price = fill
+                            entry_raw_price = raw_open
+                            entry_time = ts
                 if position != 0:
                     # Conservative isolated-margin liquidation approximation using intrabar extremes.
                     if position > 0:
@@ -211,6 +254,7 @@ class BacktestEngine:
             signals.append(signal.to_dict())
             pending_signal = signal.signal if in_eval else SignalType.HOLD
             pending_reason = signal.entry_reason or signal.exit_reason
+            pending_size_hint = signal.position_size_hint if in_eval else None
 
         if position != 0 and not data.empty:
             last = data[data["timestamp"] <= end].iloc[-1]
@@ -221,7 +265,7 @@ class BacktestEngine:
         curve_df = pd.DataFrame(curve)
         trades_df = pd.DataFrame(trades)
         signals_df = pd.DataFrame(signals)
-        metrics = calculate_metrics(curve_df, trades_df, cfg.initial_equity)
+        metrics = calculate_metrics(curve_df, trades_df, cfg.initial_equity, cfg.periods_per_year)
         return BacktestResult(strategy.strategy_name, strategy.strategy_version, metrics, curve_df, trades_df, signals_df)
 
 
