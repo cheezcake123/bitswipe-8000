@@ -195,6 +195,7 @@ class BacktestEngine:
             current_turnover_notional = 0.0
             current_funding_cost = current_funding_income = 0.0
 
+        current_row_only = bool(getattr(strategy, "uses_precomputed_features", False))
         for i, row in data.iterrows():
             ts = row["timestamp"]
             if ts > end:
@@ -249,7 +250,7 @@ class BacktestEngine:
             mark_equity = equity + (position * units * (float(row["close"]) - entry_price) if position != 0 else 0.0)
             if in_eval:
                 curve.append({"timestamp": ts, "equity": mark_equity, "position": position})
-            history = data.iloc[: i + 1]
+            history = data.iloc[i : i + 1] if current_row_only else data.iloc[: i + 1]
             signal = strategy.generate_signal(history, str(row["symbol"]), position if in_eval else 0)
             signals.append(signal.to_dict())
             pending_signal = signal.signal if in_eval else SignalType.HOLD
