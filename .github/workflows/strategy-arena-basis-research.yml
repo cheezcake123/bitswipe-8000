@@ -6,6 +6,7 @@ on:
       - server-current-8000-2026-06-18
     paths:
       - 'strategy_arena/basis_research.py'
+      - 'strategy_arena/basis_research_cli.py'
       - 'strategy_arena/market_store.py'
       - '.github/workflows/strategy-arena-basis-research.yml'
   workflow_dispatch:
@@ -23,8 +24,9 @@ jobs:
         run: pip install -r requirements.txt
       - name: Backfill official Binance 1m spot and perpetual data and run basis research
         run: |
+          set -o pipefail
           mkdir -p data/arena
-          python -m strategy_arena.basis_research \
+          python -m strategy_arena.basis_research_cli \
             --symbol BTCUSDT \
             --start-month 2019-09 \
             --end-month 2026-06 \
