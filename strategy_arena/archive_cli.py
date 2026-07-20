@@ -56,7 +56,18 @@ def fetch_vision_ohlcv(symbol: str, start: date, end: date, session: requests.Se
         ds = day.isoformat()
         url = f"{BASE}/klines/{symbol}/1h/{symbol}-1h-{ds}.zip"
         content = _download_archive_bytes(url, session)
-        raw = _csv_from_zip(content, header=None, names=KLINE_COLUMNS)
+        raw = _csv_from_zip(content)
+        if "open_time" in raw.columns:
+            raw = raw.rename(columns={
+                "open_time": "timestamp",
+                "quote_asset_volume": "quote_volume",
+                "number_of_trades": "trades",
+                "taker_buy_base_asset_volume": "taker_buy_base",
+                "taker_buy_quote_asset_volume": "taker_buy_quote",
+            })
+        elif "timestamp" not in raw.columns:
+            # Legacy headerless archives: re-read without treating the first data row as a header.
+            raw = _csv_from_zip(content, header=None, names=KLINE_COLUMNS)
         frames.append(raw)
     df = pd.concat(frames, ignore_index=True)
     ts_unit = _epoch_unit(df["timestamp"])
