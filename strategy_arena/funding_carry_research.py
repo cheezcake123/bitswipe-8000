@@ -105,10 +105,13 @@ def _attach_market_context(funding: pd.DataFrame, featured: pd.DataFrame) -> pd.
     market = featured[[
         "timestamp", "basis_bps", "basis_pct", "spot_close", "perp_close",
         "vol_regime", "trend_regime",
-    ]].sort_values("timestamp")
+    ]].copy()
+    market["timestamp"] = pd.to_datetime(market["timestamp"], utc=True).astype("datetime64[ms, UTC]")
+    f = funding.copy()
+    f["timestamp"] = pd.to_datetime(f["timestamp"], utc=True).astype("datetime64[ms, UTC]")
     return pd.merge_asof(
-        funding.sort_values("timestamp"),
-        market,
+        f.sort_values("timestamp"),
+        market.sort_values("timestamp"),
         on="timestamp",
         direction="backward",
         allow_exact_matches=True,
@@ -158,9 +161,16 @@ def _episode_table(events: pd.DataFrame) -> pd.DataFrame:
 
 
 def _basis_at_times(featured: pd.DataFrame, times: pd.Series) -> pd.Series:
-    left = pd.DataFrame({"timestamp": pd.to_datetime(times, utc=True)}).sort_values("timestamp")
-    right = featured[["timestamp", "basis_bps"]].sort_values("timestamp")
-    return pd.merge_asof(left, right, on="timestamp", direction="backward", tolerance=pd.Timedelta(minutes=1))["basis_bps"]
+    left = pd.DataFrame({"timestamp": pd.to_datetime(times, utc=True).astype("datetime64[ms, UTC]")}).sort_values("timestamp")
+    right = featured[["timestamp", "basis_bps"]].copy()
+    right["timestamp"] = pd.to_datetime(right["timestamp"], utc=True).astype("datetime64[ms, UTC]")
+    return pd.merge_asof(
+        left,
+        right.sort_values("timestamp"),
+        on="timestamp",
+        direction="backward",
+        tolerance=pd.Timedelta(minutes=1),
+    )["basis_bps"]
 
 
 def _episode_end_context(episodes: pd.DataFrame, featured: pd.DataFrame) -> pd.DataFrame:
