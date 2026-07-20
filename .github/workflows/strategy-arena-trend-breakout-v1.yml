@@ -1,0 +1,53 @@
+name: Strategy Arena Trend Breakout v1
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/trend_breakout_v1.py'
+      - 'strategy_arena/trend_breakout_backtest.py'
+      - 'strategy_arena/trend_breakout_research.py'
+      - 'strategy_arena/backtest.py'
+      - 'strategy_arena/strategies.py'
+      - 'tests/test_trend_breakout_v1.py'
+      - '.github/workflows/strategy-arena-trend-breakout-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Strategy Arena tests
+        run: pytest -q tests/test_strategy_arena_mvp.py tests/test_market_data_foundation.py tests/test_trend_breakout_v1.py
+      - name: Run long-horizon trend breakout v1 backtest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m strategy_arena.trend_breakout_backtest \
+            --symbol BTCUSDT \
+            --start-month 2019-09 \
+            --end-month 2026-06 \
+            --evaluation-start 2020-01-01 \
+            --output-dir data/arena/trend_breakout_v1 \
+            --workers 6 2>&1 | tee data/arena/trend_breakout_v1.log
+      - name: Show summary
+        if: always()
+        run: cat data/arena/trend_breakout_v1/summary.json || true
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-trend-breakout-v1
+          path: |
+            data/arena/trend_breakout_v1
+            data/arena/trend_breakout_v1.log
+          retention-days: 90
+          if-no-files-found: warn
