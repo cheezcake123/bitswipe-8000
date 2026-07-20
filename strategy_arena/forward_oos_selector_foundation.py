@@ -249,6 +249,7 @@ class AppendOnlyLeagueStore:
         "hypothetical_fills",
         "hypothetical_trades",
         "selector_decisions",
+        "conflicts",
         "overlap",
         "scorecards",
     }
@@ -284,9 +285,16 @@ class AppendOnlyLeagueStore:
         if "timestamp" not in frame.columns:
             frame["timestamp"] = pd.Timestamp(datetime.now(timezone.utc)).floor("ms")
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True).astype("datetime64[ms, UTC]")
-        if dataset in {"signals", "hypothetical_fills", "hypothetical_trades", "selector_decisions"}:
-            if (frame["timestamp"] < FORWARD_OOS_START_UTC).any():
-                raise ValueError("Historical/backtest rows cannot be written into Forward OOS League")
+        if dataset in {
+            "signals",
+            "hypothetical_fills",
+            "hypothetical_trades",
+            "selector_decisions",
+            "conflicts",
+            "overlap",
+            "scorecards",
+        } and (frame["timestamp"] < FORWARD_OOS_START_UTC).any():
+            raise ValueError("Historical/backtest rows cannot be written into Forward OOS League")
         frame["recorded_at_utc"] = pd.Timestamp(datetime.now(timezone.utc)).floor("ms")
         frame["forward_oos_start_utc"] = FORWARD_OOS_START_UTC
         day = frame["timestamp"].min().strftime("%Y-%m-%d")
