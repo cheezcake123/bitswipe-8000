@@ -10,9 +10,9 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from strategy_arena.backtest import BacktestConfig, BacktestEngine, buy_and_hold_metrics, chronological_split, save_comparison, save_result
+from strategy_arena.backtest import BacktestConfig, BacktestEngine, buy_and_hold_metrics, chronological_split
 from strategy_arena.data import build_research_dataset, save_parquet, validate_research_dataset, validate_source_table
-from strategy_arena.reporting import save_visual_report
+from strategy_arena.reporting import save_comparison, save_result
 from strategy_arena.strategies import FundingExtremeReversalV1, OIDivergenceV1, OIMomentumV1
 
 BASE = "https://data.binance.vision/data/futures/um/daily"
@@ -168,9 +168,7 @@ def main() -> None:
         comparison.append({"strategy": "BTC_BUY_HOLD", "version": "benchmark", "split": split.name, **benchmark})
         for strategy in strategies:
             result = engine.run(dataset, strategy, split.start, split.end)
-            result_dir = Path(args.output_dir) / result.strategy_name / result.strategy_version / split.name
             save_result(result, args.output_dir, split.name)
-            save_visual_report(result, result_dir)
             comparison.append({"strategy": result.strategy_name, "version": result.strategy_version, "split": split.name, **result.metrics})
 
     comparison_path = save_comparison(comparison, args.output_dir)
