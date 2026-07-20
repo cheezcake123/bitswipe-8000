@@ -43,14 +43,13 @@ class VolatilityAdjustedTrendBreakoutV1(BaseStrategy):
     def _daily_history(self, history: pd.DataFrame) -> pd.DataFrame:
         hourly = history[["timestamp", "open", "high", "low", "close", "volume"]].copy()
         hourly["timestamp"] = pd.to_datetime(hourly["timestamp"], utc=True)
-        daily = (
+        return (
             hourly.set_index("timestamp")
             .resample("1D")
             .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
             .dropna()
             .reset_index()
         )
-        return daily
 
     def _atr_percent_series(self, daily: pd.DataFrame) -> pd.Series:
         prev_close = daily["close"].shift(1)
@@ -74,28 +73,50 @@ class VolatilityAdjustedTrendBreakoutV1(BaseStrategy):
         reference = float(past.median())
         if reference <= 0:
             return None, {"atr_pct": current_atr_pct, "volatility_reference": reference}
-        # Normal/low volatility is capped at full size. Higher-than-normal ATR reduces size proportionally.
         size = min(self.max_position_fraction, reference / current_atr_pct)
         return max(0.0, float(size)), {"atr_pct": current_atr_pct, "volatility_reference": reference}
+
+    def _from_precomputed(self, row: pd.Series, symbol: str, current_position: int, ts: str) -> Signal | None:
+        if "trend_ready" not in row.index:
+            return None
+        if not bool(row.get("trend_ready", False)):
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.HOLD, metadata={"reason": "warmup"})
+        raw_size = row.get("trend_position_size_hint")
+        size_hint = float(raw_size) if pd.notna(raw_size) else None
+        metadata = {
+            "entry_upper_55d": float(row["trend_entry_upper"]),
+            "entry_lower_55d": float(row["trend_entry_lower"]),
+            "exit_upper_20d": float(row["trend_exit_upper"]),
+            "exit_lower_20d": float(row["trend_exit_lower"]),
+            "atr_pct": float(row["trend_atr_pct"]),
+            "volatility_reference": float(row["trend_volatility_reference"]),
+            "position_size_hint": size_hint,
+            "params": self.__dict__.copy(),
+            "precomputed_from_past_only": True,
+        }
+        if current_position > 0 and bool(row["trend_exit_long"]):
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.EXIT, 0.7, position_size_hint=size_hint, exit_reason="Long trend ended: close below prior 20-day low", metadata=metadata)
+        if current_position < 0 and bool(row["trend_exit_short"]):
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.EXIT, 0.7, position_size_hint=size_hint, exit_reason="Short trend ended: close above prior 20-day high", metadata=metadata)
+        if current_position == 0 and bool(row["trend_entry_long"]):
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.LONG, 0.65, position_size_hint=size_hint, entry_reason="Close broke above prior 55-day Donchian high", metadata=metadata)
+        if current_position == 0 and bool(row["trend_entry_short"]):
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.SHORT, 0.65, position_size_hint=size_hint, entry_reason="Close broke below prior 55-day Donchian low", metadata=metadata)
+        return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.HOLD, position_size_hint=size_hint, metadata=metadata)
 
     def generate_signal(self, history: pd.DataFrame, symbol: str, current_position: int) -> Signal:
         row = history.iloc[-1]
         decision_ts = self._decision_timestamp(row)
         ts = decision_ts.isoformat()
-
-        # Only the UTC day's final 1h candle is allowed to create a new decision.
         if pd.Timestamp(row["timestamp"]).hour != 23:
             return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.HOLD)
-        if len(history) < self.max_lookback_bars:
-            return Signal(
-                self.strategy_name,
-                self.strategy_version,
-                ts,
-                symbol,
-                SignalType.HOLD,
-                metadata={"reason": "warmup", "params": self.__dict__.copy()},
-            )
 
+        precomputed = self._from_precomputed(row, symbol, current_position, ts)
+        if precomputed is not None:
+            return precomputed
+
+        if len(history) < self.max_lookback_bars:
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.HOLD, metadata={"reason": "warmup", "params": self.__dict__.copy()})
         daily = self._daily_history(history)
         if len(daily) < max(self.entry_window_days + 1, self.atr_window_days + self.volatility_reference_min_days + 1):
             return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.HOLD, metadata={"reason": "daily_warmup"})
@@ -108,7 +129,6 @@ class VolatilityAdjustedTrendBreakoutV1(BaseStrategy):
         exit_lower = float(prior_exit["low"].min())
         close = float(daily.iloc[-1]["close"])
         size_hint, vol_meta = self._position_size_hint(daily)
-
         metadata = {
             "entry_upper_55d": entry_upper,
             "entry_lower_55d": entry_lower,
@@ -118,41 +138,12 @@ class VolatilityAdjustedTrendBreakoutV1(BaseStrategy):
             "params": self.__dict__.copy(),
             **vol_meta,
         }
-
         if current_position > 0 and close < exit_lower:
-            return Signal(
-                self.strategy_name, self.strategy_version, ts, symbol, SignalType.EXIT, 0.7,
-                position_size_hint=size_hint,
-                exit_reason="Long trend ended: close below prior 20-day low",
-                metadata=metadata,
-            )
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.EXIT, 0.7, position_size_hint=size_hint, exit_reason="Long trend ended: close below prior 20-day low", metadata=metadata)
         if current_position < 0 and close > exit_upper:
-            return Signal(
-                self.strategy_name, self.strategy_version, ts, symbol, SignalType.EXIT, 0.7,
-                position_size_hint=size_hint,
-                exit_reason="Short trend ended: close above prior 20-day high",
-                metadata=metadata,
-            )
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.EXIT, 0.7, position_size_hint=size_hint, exit_reason="Short trend ended: close above prior 20-day high", metadata=metadata)
         if current_position == 0 and close > entry_upper:
-            return Signal(
-                self.strategy_name, self.strategy_version, ts, symbol, SignalType.LONG, 0.65,
-                position_size_hint=size_hint,
-                entry_reason="Close broke above prior 55-day Donchian high",
-                metadata=metadata,
-            )
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.LONG, 0.65, position_size_hint=size_hint, entry_reason="Close broke above prior 55-day Donchian high", metadata=metadata)
         if current_position == 0 and close < entry_lower:
-            return Signal(
-                self.strategy_name, self.strategy_version, ts, symbol, SignalType.SHORT, 0.65,
-                position_size_hint=size_hint,
-                entry_reason="Close broke below prior 55-day Donchian low",
-                metadata=metadata,
-            )
-        return Signal(
-            self.strategy_name,
-            self.strategy_version,
-            ts,
-            symbol,
-            SignalType.HOLD,
-            position_size_hint=size_hint,
-            metadata=metadata,
-        )
+            return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.SHORT, 0.65, position_size_hint=size_hint, entry_reason="Close broke below prior 55-day Donchian low", metadata=metadata)
+        return Signal(self.strategy_name, self.strategy_version, ts, symbol, SignalType.HOLD, position_size_hint=size_hint, metadata=metadata)
