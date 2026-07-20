@@ -24,6 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p data/arena
           PYTHONPATH=. python -m strategy_arena.funding_carry_research \
             --symbol BTCUSDT \
             --start-month 2019-09 \
