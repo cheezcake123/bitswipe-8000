@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - server-current-8000-2026-06-18
+      - feature/funding-extreme-reversal-long-validation
     paths:
       - 'strategy_arena/forward_oos_selector_foundation.py'
       - 'strategy_arena/forward_oos_runtime.py'
