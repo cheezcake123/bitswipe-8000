@@ -1,0 +1,68 @@
+name: Strategy Arena Funding-Aligned Momentum v1
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/funding_aligned_momentum_v1.py'
+      - 'strategy_arena/funding_aligned_momentum_backtest.py'
+      - 'strategy_arena/funding_aligned_momentum_research.py'
+      - 'tests/test_funding_aligned_momentum_v1.py'
+      - '.github/workflows/strategy-arena-funding-aligned-momentum-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Run Strategy Arena regression and Funding-Aligned Momentum tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/arena
+          pytest -q \
+            tests/test_strategy_arena_mvp.py \
+            tests/test_market_data_foundation.py \
+            tests/test_funding_carry_v1.py \
+            tests/test_volatility_compression_v1.py \
+            tests/test_funding_aligned_momentum_v1.py \
+            2>&1 | tee data/arena/funding_aligned_momentum_tests.log
+      - name: Run frozen Funding-Aligned Momentum v1 backtest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m strategy_arena.funding_aligned_momentum_backtest \
+            --symbol BTCUSDT \
+            --start-month 2019-09 \
+            --end-month 2026-06 \
+            --evaluation-start 2020-01-01T00:00:00Z \
+            --output-dir data/arena/funding_aligned_momentum_v1 \
+            --workers 6 2>&1 | tee data/arena/funding_aligned_momentum_v1.log
+      - name: Show summary
+        if: always()
+        run: |
+          cat data/arena/funding_aligned_momentum_tests.log || true
+          cat data/arena/funding_aligned_momentum_v1/summary.json || true
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-funding-aligned-momentum-v1
+          path: |
+            data/arena/funding_aligned_momentum_v1
+            data/arena/funding_aligned_momentum_v1.log
+            data/arena/funding_aligned_momentum_tests.log
+          retention-days: 90
+          if-no-files-found: warn
