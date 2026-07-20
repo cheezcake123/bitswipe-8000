@@ -23,6 +23,7 @@ class Signal:
     symbol: str
     signal: SignalType
     confidence: float = 0.0
+    position_size_hint: float | None = None
     entry_reason: str = ""
     exit_reason: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
