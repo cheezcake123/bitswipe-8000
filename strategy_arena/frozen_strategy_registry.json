@@ -1,0 +1,148 @@
+{
+  "registry_version": 1,
+  "historical_backtest_cutoff_utc": "2026-06-30T23:59:59.999+00:00",
+  "forward_oos_start_utc": "2026-07-01T00:00:00+00:00",
+  "strategies": [
+    {
+      "strategy_name": "funding_carry",
+      "strategy_version": "v1",
+      "status": "conditional_candidate",
+      "verdict": "B",
+      "frozen_at": "2026-07-20T00:00:00Z",
+      "parameters": {
+        "entry_funding_rate": 0.0002,
+        "exit_funding_rate": 0.0,
+        "spot_taker_fee": 0.001,
+        "perp_taker_fee": 0.0005,
+        "spot_half_spread": 0.00005,
+        "perp_half_spread": 0.00005,
+        "spot_slippage": 0.00005,
+        "perp_slippage": 0.00005,
+        "perp_leg_delay_bars": 1,
+        "perp_leverage": 1.0,
+        "maintenance_margin_rate": 0.005,
+        "rebalancing_cost_rate": 0.0
+      },
+      "allowed_for_selector": true,
+      "allowed_for_paper": false,
+      "activation": "HIGH_POSITIVE_FUNDING: actual observed funding >= 0.0002 per event; risk gate must also pass",
+      "implementation_ref": "strategy_arena.funding_carry_v1:FundingCarryV1Config",
+      "notes": "B verdict. Conditional High Funding candidate only. +2bp entry rule is frozen. No automatic Paper or Live activation."
+    },
+    {
+      "strategy_name": "funding_extreme_reversal",
+      "strategy_version": "v1",
+      "status": "shadow",
+      "verdict": "C",
+      "frozen_at": "2026-07-20T00:00:00Z",
+      "parameters": {
+        "funding_zscore_window": 168,
+        "extreme_threshold": 1.75,
+        "momentum_window": 6,
+        "exit_zscore": 0.5
+      },
+      "allowed_for_selector": false,
+      "allowed_for_paper": false,
+      "activation": null,
+      "implementation_ref": "strategy_arena.strategies:FundingExtremeReversalV1",
+      "notes": "C verdict after 2020-2026 validation. Preserved as Shadow Strategy; no selector allocation."
+    },
+    {
+      "strategy_name": "basis_mean_reversion",
+      "strategy_version": "v1",
+      "status": "shadow",
+      "verdict": "C",
+      "frozen_at": "2026-07-20T00:00:00Z",
+      "parameters": {
+        "z_window_minutes": 43200,
+        "extreme_z": 2.0,
+        "reset_z": 1.0,
+        "execution_structure": "spot_long_perpetual_short_for_positive_extreme",
+        "next_bar_execution": true
+      },
+      "allowed_for_selector": false,
+      "allowed_for_paper": false,
+      "activation": null,
+      "implementation_ref": "strategy_arena.basis_research:BasisResearchConfig + strategy_arena.basis_execution",
+      "notes": "C verdict. Statistical mean reversion survived as a phenomenon but not as sufficient cost-adjusted edge. Shadow only."
+    },
+    {
+      "strategy_name": "volatility_adjusted_trend_breakout",
+      "strategy_version": "v1",
+      "status": "shadow",
+      "verdict": "C",
+      "frozen_at": "2026-07-20T00:00:00Z",
+      "parameters": {
+        "entry_window_days": 55,
+        "exit_window_days": 20,
+        "atr_window_days": 14,
+        "volatility_reference_days": 252,
+        "volatility_reference_min_days": 126,
+        "max_position_fraction": 1.0,
+        "max_leverage": 2.0,
+        "bars_per_day": 24
+      },
+      "allowed_for_selector": false,
+      "allowed_for_paper": false,
+      "activation": null,
+      "implementation_ref": "strategy_arena.trend_breakout_v1:VolatilityAdjustedTrendBreakoutV1",
+      "notes": "C verdict. Shadow only; frozen 55d/20d Donchian and volatility-adjusted sizing."
+    },
+    {
+      "strategy_name": "volatility_compression_breakout",
+      "strategy_version": "v1",
+      "status": "shadow",
+      "verdict": "C",
+      "frozen_at": "2026-07-20T00:00:00Z",
+      "parameters": {
+        "direction_mode": "SHORT_ONLY",
+        "compression_percentile": 0.2,
+        "percentile_lookback_hours": 2160,
+        "atr_window_hours": 24,
+        "range_window_hours": 24,
+        "max_holding_hours": 24,
+        "max_leverage": 2.0
+      },
+      "allowed_for_selector": false,
+      "allowed_for_paper": false,
+      "activation": null,
+      "implementation_ref": "strategy_arena.volatility_compression_v1:VolatilityCompressionBreakoutV1",
+      "notes": "C verdict. Frozen SHORT-only ATR compression breakout. Shadow only."
+    },
+    {
+      "strategy_name": "funding_aligned_momentum",
+      "strategy_version": "v1",
+      "status": "shadow",
+      "verdict": "C",
+      "frozen_at": "2026-07-20T00:00:00Z",
+      "parameters": {
+        "momentum_hours": 168,
+        "direction_mode": "LONG_ONLY",
+        "funding_condition": "latest actually observed funding < 0",
+        "max_leverage": 2.0
+      },
+      "allowed_for_selector": false,
+      "allowed_for_paper": false,
+      "activation": null,
+      "implementation_ref": "strategy_arena.funding_aligned_momentum_v1:FundingAlignedMomentumV1",
+      "notes": "C verdict. Frozen 7d positive momentum + negative known funding LONG-only hypothesis. Shadow only."
+    },
+    {
+      "strategy_name": "oi_momentum",
+      "strategy_version": "v1",
+      "status": "pending_data",
+      "verdict": "pending_data",
+      "frozen_at": "2026-07-20T00:00:00Z",
+      "parameters": {
+        "lookback_hours": 6,
+        "min_price_move": 0.005,
+        "min_oi_move": 0.01
+      },
+      "allowed_for_selector": false,
+      "allowed_for_paper": false,
+      "activation": null,
+      "implementation_ref": "strategy_arena.strategies:OIMomentumV1",
+      "notes": "Long-history verdict deferred because OI history is insufficient. Forward OOS observations may accumulate, but selector use is forbidden."
+    }
+  ]
+}
