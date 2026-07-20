@@ -26,7 +26,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Run Strategy Arena tests
-        run: pytest -q tests/test_strategy_arena_mvp.py tests/test_market_data_foundation.py tests/test_trend_breakout_v1.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/arena
+          pytest -q tests/test_strategy_arena_mvp.py tests/test_market_data_foundation.py tests/test_trend_breakout_v1.py 2>&1 | tee data/arena/trend_breakout_tests.log
       - name: Run long-horizon trend breakout v1 backtest
         shell: bash
         run: |
@@ -40,13 +44,16 @@ jobs:
             --workers 6 2>&1 | tee data/arena/trend_breakout_v1.log
       - name: Show summary
         if: always()
-        run: cat data/arena/trend_breakout_v1/summary.json || true
+        run: |
+          cat data/arena/trend_breakout_tests.log || true
+          cat data/arena/trend_breakout_v1/summary.json || true
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: strategy-arena-trend-breakout-v1
           path: |
+            data/arena/trend_breakout_tests.log
             data/arena/trend_breakout_v1
             data/arena/trend_breakout_v1.log
           retention-days: 90
