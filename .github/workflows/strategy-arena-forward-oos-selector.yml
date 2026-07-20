@@ -9,6 +9,8 @@ on:
       - 'strategy_arena/forward_oos_selector_foundation.py'
       - 'strategy_arena/forward_oos_runtime.py'
       - 'strategy_arena/forward_oos_live_runner.py'
+      - 'strategy_arena/forward_oos_league_runner.py'
+      - 'strategy_arena/forward_oos_league_daemon.py'
       - 'strategy_arena/frozen_strategy_registry.json'
       - 'strategy_arena/promotion_gates.json'
       - 'strategy_arena/FORWARD_OOS_SELECTOR_FOUNDATION.md'
@@ -39,7 +41,7 @@ jobs:
             tests/test_funding_carry_v1.py \
             tests/test_funding_extreme_long_validation.py \
             tests/test_forward_oos_selector_foundation.py
-      - name: Initialize empty live-source-only Forward OOS League snapshot
+      - name: Initialize empty live-source-only Forward OOS snapshots
         run: |
           set -euo pipefail
           mkdir -p data/arena
@@ -47,6 +49,10 @@ jobs:
             --store-root data/arena/ci-empty-market-store \
             --league-root data/arena/ci-forward-oos-league \
             | tee data/arena/forward-oos-selector-foundation.log
+          python -m strategy_arena.forward_oos_league_runner \
+            --store-root data/arena/ci-empty-market-store \
+            --league-root data/arena/ci-forward-oos-league \
+            | tee -a data/arena/forward-oos-selector-foundation.log
       - name: Verify safety flags and live-source boundary
         run: |
           python - <<'PY'
@@ -56,11 +62,15 @@ jobs:
           assert metadata['orders_enabled'] is False
           assert metadata['paper_trading_enabled'] is False
           assert metadata['auto_promotion_enabled'] is False
-          snapshot = json.loads(Path('data/arena/ci-forward-oos-league/latest_live_foundation_snapshot.json').read_text())
-          assert snapshot['accepted_forward_source'] == 'binance_usdm_rest'
-          assert snapshot['orders_enabled'] is False
-          assert snapshot['paper_trading_enabled'] is False
-          print(json.dumps(snapshot, indent=2))
+          live = json.loads(Path('data/arena/ci-forward-oos-league/latest_live_foundation_snapshot.json').read_text())
+          assert live['accepted_forward_source'] == 'binance_usdm_rest'
+          assert live['orders_enabled'] is False
+          assert live['paper_trading_enabled'] is False
+          league = json.loads(Path('data/arena/ci-forward-oos-league/latest_league_run.json').read_text())
+          assert league['status'] == 'NO_LIVE_FORWARD_DATA'
+          assert league['orders_enabled'] is False
+          assert league['paper_trading_enabled'] is False
+          print(json.dumps(league, indent=2))
           PY
       - name: Upload foundation validation artifact
         uses: actions/upload-artifact@v4
