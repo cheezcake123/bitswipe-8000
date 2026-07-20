@@ -7,6 +7,7 @@ on:
     paths:
       - 'strategy_arena/forward_oos_selector_foundation.py'
       - 'strategy_arena/forward_oos_runtime.py'
+      - 'strategy_arena/forward_oos_live_runner.py'
       - 'strategy_arena/frozen_strategy_registry.json'
       - 'strategy_arena/promotion_gates.json'
       - 'strategy_arena/FORWARD_OOS_SELECTOR_FOUNDATION.md'
@@ -37,10 +38,10 @@ jobs:
             tests/test_funding_carry_v1.py \
             tests/test_funding_extreme_long_validation.py \
             tests/test_forward_oos_selector_foundation.py
-      - name: Initialize empty Forward OOS League snapshot
+      - name: Initialize empty live-source-only Forward OOS League snapshot
         run: |
           set -euo pipefail
-          python -m strategy_arena.forward_oos_selector_foundation \
+          python -m strategy_arena.forward_oos_live_runner \
             --store-root data/arena/ci-empty-market-store \
             --league-root data/arena/ci-forward-oos-league \
             | tee data/arena/forward-oos-selector-foundation.log
@@ -54,7 +55,11 @@ jobs:
           assert data['orders_enabled'] is False
           assert data['paper_trading_enabled'] is False
           assert data['auto_promotion_enabled'] is False
-          print(json.dumps(data, indent=2))
+          snapshot = json.loads(Path('data/arena/ci-forward-oos-league/latest_live_foundation_snapshot.json').read_text())
+          assert snapshot['accepted_forward_source'] == 'binance_usdm_rest'
+          assert snapshot['orders_enabled'] is False
+          assert snapshot['paper_trading_enabled'] is False
+          print(json.dumps(snapshot, indent=2))
           PY
       - name: Upload foundation validation artifact
         uses: actions/upload-artifact@v4
