@@ -1,0 +1,63 @@
+name: Strategy Arena Funding Carry v1
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/funding_carry_v1.py'
+      - 'strategy_arena/funding_carry_research.py'
+      - 'tests/test_funding_carry_v1.py'
+      - '.github/workflows/strategy-arena-funding-carry-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Run Strategy Arena regression and Funding Carry tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/arena
+          PYTHONPATH=. pytest -q \
+            tests/test_strategy_arena_mvp.py \
+            tests/test_market_data_foundation.py \
+            tests/test_funding_carry_v1.py \
+            2>&1 | tee data/arena/funding_carry_tests.log
+      - name: Run fixed-rule Funding Carry v1 simulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python -m strategy_arena.funding_carry_v1 \
+            --symbol BTCUSDT \
+            --start-month 2019-09 \
+            --end-month 2026-06 \
+            --store-root data/arena/funding_carry_v1_store \
+            --output-dir data/arena/funding_carry_v1 \
+            --workers 6 2>&1 | tee data/arena/funding_carry_v1.log
+      - name: Show summary
+        if: always()
+        run: |
+          cat data/arena/funding_carry_tests.log || true
+          cat data/arena/funding_carry_v1/funding_carry_summary.json || true
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-funding-carry-v1
+          path: |
+            data/arena/funding_carry_v1
+            data/arena/funding_carry_v1.log
+            data/arena/funding_carry_tests.log
+          retention-days: 90
+          if-no-files-found: warn
