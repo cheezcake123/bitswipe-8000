@@ -19,19 +19,22 @@ jobs:
         run: pip install -r requirements.txt
       - name: Diagnose Binance public archive availability
         run: |
-          set +e
-          for url in \
-            "https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1h/BTCUSDT-1h-2026-07-19.zip" \
-            "https://data.binance.vision/data/futures/um/daily/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-07-19.zip" \
-            "https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2026-07-19.zip"; do
-            echo "URL=$url"
-            code=$(curl -L -s -o /tmp/sample.zip -w "%{http_code}" "$url")
-            echo "HTTP=$code"
-            if [ "$code" = "200" ]; then
-              unzip -p /tmp/sample.zip | head -n 3 || true
-            fi
-          done
-          set -e
+          mkdir -p data/arena
+          {
+            set +e
+            for url in \
+              "https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1h/BTCUSDT-1h-2026-07-19.zip" \
+              "https://data.binance.vision/data/futures/um/daily/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-07-19.zip" \
+              "https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2026-07-19.zip"; do
+              echo "URL=$url"
+              code=$(curl -L -s -o /tmp/sample.zip -w "%{http_code}" "$url")
+              echo "HTTP=$code"
+              if [ "$code" = "200" ]; then
+                unzip -p /tmp/sample.zip | head -n 3 || true
+              fi
+            done
+            set -e
+          } | tee data/arena/archive_diagnostics.txt
       - name: Run Strategy Arena 28-day E2E backtest
         run: python -m strategy_arena.cli --symbol BTCUSDT --days 28 --data-dir data/arena --output-dir data/arena/results --leverage 2
       - name: List result files
