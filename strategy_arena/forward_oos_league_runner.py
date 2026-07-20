@@ -135,7 +135,7 @@ def build_forward_market_context(store: AppendOnlyMarketStore, symbol: str = SYM
     live_funding = store.read("funding_rate", symbol=symbol, source=LIVE_FUTURES_SOURCE, start=FORWARD_OOS_START_UTC)
     live_oi = store.read("open_interest", symbol=symbol, source=LIVE_FUTURES_SOURCE, start=FORWARD_OOS_START_UTC)
 
-    data_quality = {
+    quality = {
         "accepted_forward_futures_source": LIVE_FUTURES_SOURCE,
         "accepted_forward_spot_source": LIVE_SPOT_SOURCE,
         "live_futures_rows": int(len(live_futures)),
@@ -144,17 +144,11 @@ def build_forward_market_context(store: AppendOnlyMarketStore, symbol: str = SYM
         "live_oi_rows": int(len(live_oi)),
     }
     if futures.empty:
-        return {
-            "hourly": pd.DataFrame(),
-            "minute_pair": pd.DataFrame(),
-            "funding": funding,
-            "oi": oi,
-            "data_quality": data_quality,
-        }
+        return {"hourly": pd.DataFrame(), "minute_pair": pd.DataFrame(), "funding": funding, "oi": oi, "data_quality": quality}
 
     futures = futures.copy()
     futures["close_time"] = pd.to_datetime(futures["close_time"], utc=True)
-    hourly = (
+    hourly_all = (
         futures.set_index("timestamp")
         .resample("1h")
         .agg(
@@ -172,10 +166,12 @@ def build_forward_market_context(store: AppendOnlyMarketStore, symbol: str = SYM
         .dropna(subset=["open", "high", "low", "close"])
         .reset_index()
     )
+    hourly_all["complete_hour"] = hourly_all["minute_bars"] == 60
+    # Strategy decisions are made only on complete hourly candles. A partial current hour is ignored.
+    hourly = hourly_all[hourly_all["complete_hour"]].copy().reset_index(drop=True)
     hourly["symbol"] = symbol
     hourly["source"] = "forward_oos_mixed_warmup_live"
     hourly["decision_timestamp"] = hourly["close_time"]
-    hourly["complete_hour"] = hourly["minute_bars"] == 60
 
     if funding.empty:
         hourly["funding_rate"] = np.nan
@@ -211,7 +207,7 @@ def build_forward_market_context(store: AppendOnlyMarketStore, symbol: str = SYM
         )
 
     minute_pair = pd.DataFrame()
-    if not spot.empty and not futures.empty:
+    if not spot.empty:
         spot_pair = spot[["timestamp", "open", "high", "close"]].rename(
             columns={"open": "spot_open", "high": "spot_high", "close": "spot_close"}
         )
@@ -224,16 +220,19 @@ def build_forward_market_context(store: AppendOnlyMarketStore, symbol: str = SYM
             .reset_index(drop=True)
         )
 
-    forward_hours = hourly[hourly["timestamp"] >= FORWARD_OOS_START_UTC]
+    forward_complete = hourly[hourly["timestamp"] >= FORWARD_OOS_START_UTC]
     expected_hours = 0
-    if not forward_hours.empty:
-        expected_hours = int((forward_hours["timestamp"].max() - FORWARD_OOS_START_UTC) / pd.Timedelta(hours=1)) + 1
-    data_quality.update(
+    missing_hours = 0
+    if not forward_complete.empty:
+        expected_hours = int((forward_complete["timestamp"].max() - FORWARD_OOS_START_UTC) / pd.Timedelta(hours=1)) + 1
+        missing_hours = max(0, expected_hours - len(forward_complete))
+    forward_all = hourly_all[hourly_all["timestamp"] >= FORWARD_OOS_START_UTC]
+    quality.update(
         {
-            "forward_hour_rows": int(len(forward_hours)),
-            "forward_incomplete_hours": int((~forward_hours["complete_hour"]).sum()) if not forward_hours.empty else 0,
-            "expected_forward_hours": expected_hours,
-            "missing_forward_hours": max(0, expected_hours - len(forward_hours)),
+            "forward_complete_hour_rows": int(len(forward_complete)),
+            "forward_incomplete_hour_rows_seen": int((~forward_all["complete_hour"]).sum()) if not forward_all.empty else 0,
+            "expected_complete_hours_through_latest_complete": expected_hours,
+            "missing_complete_hours": missing_hours,
             "minute_pair_rows": int(len(minute_pair[minute_pair["timestamp"] >= FORWARD_OOS_START_UTC])) if not minute_pair.empty else 0,
         }
     )
@@ -242,7 +241,7 @@ def build_forward_market_context(store: AppendOnlyMarketStore, symbol: str = SYM
         "minute_pair": minute_pair,
         "funding": funding,
         "oi": oi,
-        "data_quality": data_quality,
+        "data_quality": quality,
     }
 
 
@@ -268,7 +267,6 @@ def _context_frame(hourly: pd.DataFrame, minute_pair: pd.DataFrame) -> pd.DataFr
     )
     out.loc[out["funding_rate"].isna(), "funding_regime"] = "UNKNOWN"
     out["market_regime"] = out[["trend_regime", "vol_regime", "funding_regime"]].agg("|".join, axis=1)
-
     out["basis_bps"] = np.nan
     if not minute_pair.empty:
         basis = minute_pair[["timestamp", "spot_close", "perp_close"]].copy()
@@ -288,39 +286,21 @@ def _common_results(hourly: pd.DataFrame, funding: pd.DataFrame) -> dict[str, ob
     if hourly.empty:
         return {}
     end = hourly["timestamp"].max()
-    results = {}
-    results["funding_extreme_reversal:v1"] = BacktestEngine(NET_CONFIG).run(
-        hourly,
-        FundingExtremeReversalV1(),
-        FORWARD_OOS_START_UTC,
-        end,
-    )
-    results["oi_momentum:v1"] = BacktestEngine(NET_CONFIG).run(
-        hourly,
-        OIMomentumV1(),
-        FORWARD_OOS_START_UTC,
-        end,
-    )
+    results = {
+        "funding_extreme_reversal:v1": BacktestEngine(NET_CONFIG).run(hourly, FundingExtremeReversalV1(), FORWARD_OOS_START_UTC, end),
+        "oi_momentum:v1": BacktestEngine(NET_CONFIG).run(hourly, OIMomentumV1(), FORWARD_OOS_START_UTC, end),
+    }
     trend_data = add_precomputed_trend_features(hourly.copy())
     results["volatility_adjusted_trend_breakout:v1"] = BacktestEngine(NET_CONFIG).run(
-        trend_data,
-        VolatilityAdjustedTrendBreakoutV1(),
-        FORWARD_OOS_START_UTC,
-        end,
+        trend_data, VolatilityAdjustedTrendBreakoutV1(), FORWARD_OOS_START_UTC, end
     )
     compression_data = add_precomputed_compression_features(hourly.copy())
     results["volatility_compression_breakout:v1"] = BacktestEngine(NET_CONFIG).run(
-        compression_data,
-        VolatilityCompressionBreakoutV1(),
-        FORWARD_OOS_START_UTC,
-        end,
+        compression_data, VolatilityCompressionBreakoutV1(), FORWARD_OOS_START_UTC, end
     )
     fam_data = prepare_fam_data(hourly.copy(), funding)
     results["funding_aligned_momentum:v1"] = BacktestEngine(NET_CONFIG).run(
-        fam_data,
-        FundingAlignedMomentumV1(),
-        FORWARD_OOS_START_UTC,
-        end,
+        fam_data, FundingAlignedMomentumV1(), FORWARD_OOS_START_UTC, end
     )
     return results
 
@@ -346,7 +326,9 @@ def _standardize_signals(strategy_key: str, result, registry, context: pd.DataFr
     signals["allowed_for_selector"] = record.allowed_for_selector
     signals["allowed_for_paper"] = record.allowed_for_paper
     signals["shadow_only"] = not record.allowed_for_selector
-    signals["metadata_json"] = signals["metadata"].apply(lambda value: json.dumps(value or {}, ensure_ascii=False, sort_keys=True, default=str))
+    signals["metadata_json"] = signals["metadata"].apply(
+        lambda value: json.dumps(value or {}, ensure_ascii=False, sort_keys=True, default=str)
+    )
     signals["actual_order_created"] = False
     signals["paper_order_created"] = False
     return signals.drop(columns=["metadata"], errors="ignore")
@@ -377,48 +359,147 @@ def _pair_data_for_forward(minute_pair: pd.DataFrame) -> tuple[pd.DataFrame, pd.
     if minute_pair.empty:
         return pd.DataFrame(), pd.DataFrame()
     history = minute_pair[
-        (minute_pair["timestamp"] >= FORWARD_OOS_START_UTC - pd.Timedelta(days=BASIS_WARMUP_DAYS))
+        minute_pair["timestamp"] >= FORWARD_OOS_START_UTC - pd.Timedelta(days=BASIS_WARMUP_DAYS)
     ].copy()
     aligned = history.copy()
     aligned["basis_abs"] = aligned["perp_close"] - aligned["spot_close"]
     aligned["basis_pct"] = aligned["basis_abs"] / aligned["spot_close"]
     aligned["basis_bps"] = aligned["basis_pct"] * 10_000.0
-    featured = add_research_features(aligned, BasisResearchConfig())
-    return history, featured
+    return history, add_research_features(aligned, BasisResearchConfig())
 
 
-def _basis_forward_data(featured: pd.DataFrame) -> pd.DataFrame:
+def _basis_state_signals(featured: pd.DataFrame, registry) -> pd.DataFrame:
     if featured.empty:
-        return featured
+        return pd.DataFrame()
+    record = registry.records["basis_mean_reversion:v1"]
     before = featured[featured["timestamp"] < FORWARD_OOS_START_UTC]
-    forward = featured[featured["timestamp"] >= FORWARD_OOS_START_UTC].copy().reset_index(drop=True)
-    if forward.empty:
-        return forward
     active_before = False
     for z in before["basis_zscore"].dropna():
         if not active_before and z >= 2.0:
             active_before = True
         elif active_before and abs(z) <= 1.0:
             active_before = False
-    if active_before:
+
+    waiting_for_reset = active_before
+    active = False
+    rows = []
+    for row in featured[featured["timestamp"] >= FORWARD_OOS_START_UTC].itertuples(index=False):
+        z = row.basis_zscore
+        if pd.isna(z):
+            continue
+        if waiting_for_reset:
+            if abs(z) <= 1.0:
+                waiting_for_reset = False
+            continue
+        if not active and z >= 2.0:
+            rows.append({
+                "timestamp": row.timestamp,
+                "strategy_name": record.strategy_name,
+                "strategy_version": record.strategy_version,
+                "strategy_fingerprint": record.fingerprint,
+                "signal": "PAIR_LONG_SPOT_SHORT_PERP",
+                "confidence": None,
+                "entry_reason": "Frozen positive basis z-score >= 2.0",
+                "exit_reason": "",
+                "shadow_only": True,
+                "actual_order_created": False,
+                "paper_order_created": False,
+            })
+            active = True
+        elif active and abs(z) <= 1.0:
+            rows.append({
+                "timestamp": row.timestamp,
+                "strategy_name": record.strategy_name,
+                "strategy_version": record.strategy_version,
+                "strategy_fingerprint": record.fingerprint,
+                "signal": "EXIT",
+                "confidence": None,
+                "entry_reason": "",
+                "exit_reason": "Frozen basis reset |z| <= 1.0",
+                "shadow_only": True,
+                "actual_order_created": False,
+                "paper_order_created": False,
+            })
+            active = False
+    return pd.DataFrame(rows)
+
+
+def _basis_forward_data_for_simulation(featured: pd.DataFrame) -> pd.DataFrame:
+    if featured.empty:
+        return featured
+    before = featured[featured["timestamp"] < FORWARD_OOS_START_UTC]
+    forward = featured[featured["timestamp"] >= FORWARD_OOS_START_UTC].copy().reset_index(drop=True)
+    active_before = False
+    for z in before["basis_zscore"].dropna():
+        if not active_before and z >= 2.0:
+            active_before = True
+        elif active_before and abs(z) <= 1.0:
+            active_before = False
+    if active_before and not forward.empty:
         reset_positions = forward.index[forward["basis_zscore"].abs() <= 1.0]
         if len(reset_positions):
-            first_reset = int(reset_positions[0])
-            forward.loc[:first_reset, "basis_zscore"] = np.nan
+            forward.loc[: int(reset_positions[0]), "basis_zscore"] = np.nan
         else:
             forward["basis_zscore"] = np.nan
     return forward
 
 
-def _pair_strategy_results(minute_pair: pd.DataFrame, funding: pd.DataFrame, registry) -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
+def _carry_state_signals(funding: pd.DataFrame, registry) -> pd.DataFrame:
+    if funding.empty:
+        return pd.DataFrame()
+    cfg = FundingCarryV1Config()
+    record = registry.records["funding_carry:v1"]
+    active = False
+    rows = []
+    for event in funding[funding["timestamp"] >= FORWARD_OOS_START_UTC].sort_values("timestamp").itertuples(index=False):
+        rate = float(event.funding_rate)
+        if not active and rate >= cfg.entry_funding_rate:
+            rows.append({
+                "timestamp": event.timestamp,
+                "strategy_name": record.strategy_name,
+                "strategy_version": record.strategy_version,
+                "strategy_fingerprint": record.fingerprint,
+                "signal": "PAIR_LONG_SPOT_SHORT_PERP",
+                "confidence": None,
+                "entry_reason": f"Observed funding >= frozen {cfg.entry_funding_rate:.4f}",
+                "exit_reason": "",
+                "shadow_only": False,
+                "actual_order_created": False,
+                "paper_order_created": False,
+            })
+            active = True
+        elif active and rate <= cfg.exit_funding_rate:
+            rows.append({
+                "timestamp": event.timestamp,
+                "strategy_name": record.strategy_name,
+                "strategy_version": record.strategy_version,
+                "strategy_fingerprint": record.fingerprint,
+                "signal": "EXIT",
+                "confidence": None,
+                "entry_reason": "",
+                "exit_reason": "Observed funding <= frozen exit 0.0",
+                "shadow_only": False,
+                "actual_order_created": False,
+                "paper_order_created": False,
+            })
+            active = False
+    return pd.DataFrame(rows)
+
+
+def _pair_strategy_results(
+    minute_pair: pd.DataFrame,
+    funding: pd.DataFrame,
+    registry,
+) -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
     signals: dict[str, pd.DataFrame] = {}
     trades: dict[str, pd.DataFrame] = {}
     history, featured = _pair_data_for_forward(minute_pair)
-    if history.empty:
-        return signals, trades
-    data_eval = history[history["timestamp"] >= FORWARD_OOS_START_UTC].copy().reset_index(drop=True)
-    funding_eval = funding[funding["timestamp"] >= FORWARD_OOS_START_UTC].copy().reset_index(drop=True) if not funding.empty else funding
-    if not data_eval.empty:
+
+    carry_signals = _carry_state_signals(funding, registry)
+    if not carry_signals.empty:
+        signals["funding_carry:v1"] = carry_signals
+
+    if not history.empty and not history[history["timestamp"] >= FORWARD_OOS_START_UTC].empty:
         carry_trades, _, _ = simulate_funding_carry(
             history,
             funding,
@@ -428,85 +509,34 @@ def _pair_strategy_results(minute_pair: pd.DataFrame, funding: pd.DataFrame, reg
         )
         if not carry_trades.empty:
             completed = carry_trades[carry_trades["exit_reason"] != "end_of_test"].copy()
-            record = registry.records["funding_carry:v1"]
-            rows = []
-            for trade in completed.to_dict("records"):
-                rows.append({
-                    "timestamp": trade["signal_time"],
-                    "strategy_name": record.strategy_name,
-                    "strategy_version": record.strategy_version,
-                    "strategy_fingerprint": record.fingerprint,
-                    "signal": "PAIR_LONG_SPOT_SHORT_PERP",
-                    "confidence": None,
-                    "entry_reason": f"Observed funding >= frozen {FundingCarryV1Config().entry_funding_rate:.4f}",
-                    "exit_reason": "",
-                    "shadow_only": False,
-                    "actual_order_created": False,
-                    "paper_order_created": False,
-                })
-                rows.append({
-                    "timestamp": trade["exit_signal_time"],
-                    "strategy_name": record.strategy_name,
-                    "strategy_version": record.strategy_version,
-                    "strategy_fingerprint": record.fingerprint,
-                    "signal": "EXIT",
-                    "confidence": None,
-                    "entry_reason": "",
-                    "exit_reason": trade["exit_reason"],
-                    "shadow_only": False,
-                    "actual_order_created": False,
-                    "paper_order_created": False,
-                })
-            signals["funding_carry:v1"] = pd.DataFrame(rows)
-            completed["timestamp"] = pd.to_datetime(completed["exit_perp_time"], utc=True)
-            completed["entry_time"] = pd.to_datetime(completed["entry_spot_time"], utc=True)
-            completed["exit_time"] = pd.to_datetime(completed["exit_perp_time"], utc=True)
-            completed["gross_pnl"] = completed["gross_economic_pnl"]
-            completed["strategy_name"] = record.strategy_name
-            completed["strategy_version"] = record.strategy_version
-            completed["strategy_fingerprint"] = record.fingerprint
-            completed["hypothetical_only"] = True
-            completed["actual_order_created"] = False
-            completed["paper_order_created"] = False
-            trades["funding_carry:v1"] = completed
+            if not completed.empty:
+                record = registry.records["funding_carry:v1"]
+                completed["timestamp"] = pd.to_datetime(completed["exit_perp_time"], utc=True)
+                completed["entry_time"] = pd.to_datetime(completed["entry_spot_time"], utc=True)
+                completed["exit_time"] = pd.to_datetime(completed["exit_perp_time"], utc=True)
+                completed["gross_pnl"] = completed["gross_economic_pnl"]
+                completed["strategy_name"] = record.strategy_name
+                completed["strategy_version"] = record.strategy_version
+                completed["strategy_fingerprint"] = record.fingerprint
+                completed["hypothetical_only"] = True
+                completed["actual_order_created"] = False
+                completed["paper_order_created"] = False
+                trades["funding_carry:v1"] = completed
 
-    basis_eval = _basis_forward_data(featured)
+    basis_signals = _basis_state_signals(featured, registry)
+    if not basis_signals.empty:
+        signals["basis_mean_reversion:v1"] = basis_signals
+
+    basis_eval = _basis_forward_data_for_simulation(featured)
     if not basis_eval.empty:
+        funding_eval = funding[funding["timestamp"] >= FORWARD_OOS_START_UTC].copy() if not funding.empty else funding
         basis_trades, _, _ = simulate_basis(basis_eval, funding_eval, BasisExecutionConfig())
         if not basis_trades.empty:
             record = registry.records["basis_mean_reversion:v1"]
-            rows = []
-            for trade in basis_trades.to_dict("records"):
-                rows.append({
-                    "timestamp": trade["signal_time"],
-                    "strategy_name": record.strategy_name,
-                    "strategy_version": record.strategy_version,
-                    "strategy_fingerprint": record.fingerprint,
-                    "signal": "PAIR_LONG_SPOT_SHORT_PERP",
-                    "confidence": None,
-                    "entry_reason": "Frozen positive basis z-score >= 2.0",
-                    "exit_reason": "",
-                    "shadow_only": True,
-                    "actual_order_created": False,
-                    "paper_order_created": False,
-                })
-                rows.append({
-                    "timestamp": trade["exit_signal_time"],
-                    "strategy_name": record.strategy_name,
-                    "strategy_version": record.strategy_version,
-                    "strategy_fingerprint": record.fingerprint,
-                    "signal": "EXIT",
-                    "confidence": None,
-                    "entry_reason": "",
-                    "exit_reason": "Frozen basis reset |z| <= 1.0",
-                    "shadow_only": True,
-                    "actual_order_created": False,
-                    "paper_order_created": False,
-                })
-            signals["basis_mean_reversion:v1"] = pd.DataFrame(rows)
             basis_trades["timestamp"] = pd.to_datetime(basis_trades["exit_perp_time"], utc=True)
             basis_trades["entry_time"] = pd.to_datetime(basis_trades["entry_spot_time"], utc=True)
             basis_trades["exit_time"] = pd.to_datetime(basis_trades["exit_perp_time"], utc=True)
+            basis_trades["holding_hours"] = basis_trades["holding_minutes"] / 60.0
             basis_trades["strategy_name"] = record.strategy_name
             basis_trades["strategy_version"] = record.strategy_version
             basis_trades["strategy_fingerprint"] = record.fingerprint
@@ -526,12 +556,10 @@ def _append_unique(store: AppendOnlyLeagueStore, dataset: str, frame: pd.DataFra
             data[column] = pd.to_datetime(data[column], utc=True)
     existing = store.read(dataset)
     if not existing.empty and all(key in existing.columns for key in keys):
-        existing_keys = set(tuple(str(row[key]) for key in keys) for _, row in existing[keys].iterrows())
-        mask = []
-        for _, row in data.iterrows():
-            key = tuple(str(row[name]) for name in keys)
-            mask.append(key not in existing_keys)
-        data = data.loc[mask].copy()
+        existing_keys = {tuple(str(row[key]) for key in keys) for _, row in existing[keys].iterrows()}
+        data = data.loc[
+            [tuple(str(row[name]) for name in keys) not in existing_keys for _, row in data.iterrows()]
+        ].copy()
     if data.empty:
         return 0
     store.append(dataset, data.to_dict("records"))
@@ -554,8 +582,28 @@ def _active_position_requests(signals: pd.DataFrame) -> list[PositionRequest]:
             elif signal == "EXIT":
                 spot = perp = 0.0
         if spot or perp:
-            requests.append(PositionRequest(str(name), str(version), spot_btc=spot, perpetual_btc=perp, margin_usage=0.0, reason="normalized_forward_oos_active_signal"))
+            requests.append(
+                PositionRequest(
+                    str(name),
+                    str(version),
+                    spot_btc=spot,
+                    perpetual_btc=perp,
+                    margin_usage=0.0,
+                    reason="normalized_forward_oos_active_signal",
+                )
+            )
     return requests
+
+
+def _attach_pair_context(frame: pd.DataFrame, context: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    context_merge = context.rename(columns={"decision_timestamp": "timestamp"})[
+        ["timestamp", "market_regime", "funding_rate", "open_interest", "basis_bps", "volatility"]
+    ].sort_values("timestamp")
+    out = frame.copy()
+    out["timestamp"] = pd.to_datetime(out["timestamp"], utc=True)
+    return pd.merge_asof(out.sort_values("timestamp"), context_merge, on="timestamp", direction="backward")
 
 
 def run_forward_oos_league_once(
@@ -575,21 +623,43 @@ def run_forward_oos_league_once(
     hourly = market["hourly"]
     minute_pair = market["minute_pair"]
     funding = market["funding"]
-    data_quality = market["data_quality"]
+    quality = market["data_quality"]
     health = collector_health_snapshot(market_store)
 
-    if hourly.empty or hourly[hourly["timestamp"] >= FORWARD_OOS_START_UTC].empty:
+    forward_hourly = hourly[hourly["timestamp"] >= FORWARD_OOS_START_UTC] if not hourly.empty else pd.DataFrame()
+    if forward_hourly.empty:
         summary = {
             "forward_oos_start_utc": FORWARD_OOS_START_UTC.isoformat(),
             "status": "NO_LIVE_FORWARD_DATA",
-            "data_quality": data_quality,
+            "data_quality": quality,
             "collector_health": health,
             "runtime_frozen_parameter_check": runtime_check,
             "orders_enabled": False,
             "paper_trading_enabled": False,
+            "auto_promotion_enabled": False,
         }
         Path(league_root).mkdir(parents=True, exist_ok=True)
-        (Path(league_root) / "latest_league_run.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (Path(league_root) / "latest_league_run.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+        return summary
+
+    # Never silently score across a missing completed-hour gap.
+    if quality.get("missing_complete_hours", 0) > 0:
+        summary = {
+            "forward_oos_start_utc": FORWARD_OOS_START_UTC.isoformat(),
+            "status": "DATA_QUALITY_BLOCKED",
+            "reason": "Missing completed Futures hours in Forward OOS interval",
+            "data_quality": quality,
+            "collector_health": health,
+            "runtime_frozen_parameter_check": runtime_check,
+            "orders_enabled": False,
+            "paper_trading_enabled": False,
+            "auto_promotion_enabled": False,
+        }
+        (Path(league_root) / "latest_league_run.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
         return summary
 
     context = _context_frame(hourly, minute_pair)
@@ -599,40 +669,56 @@ def run_forward_oos_league_once(
     appended_signals = 0
     appended_trades = 0
     for key, result in common.items():
-        signal_frame = _standardize_signals(key, result, registry, context)
-        trade_frame = _standardize_common_trades(key, result, registry)
-        appended_signals += _append_unique(league_store, "signals", signal_frame, ["strategy_name", "strategy_version", "timestamp"])
-        appended_trades += _append_unique(league_store, "hypothetical_trades", trade_frame, ["strategy_name", "strategy_version", "entry_time", "exit_time"])
+        appended_signals += _append_unique(
+            league_store,
+            "signals",
+            _standardize_signals(key, result, registry, context),
+            ["strategy_name", "strategy_version", "timestamp"],
+        )
+        appended_trades += _append_unique(
+            league_store,
+            "hypothetical_trades",
+            _standardize_common_trades(key, result, registry),
+            ["strategy_name", "strategy_version", "entry_time", "exit_time"],
+        )
 
-    for key, frame in pair_signals.items():
-        if not frame.empty:
-            context_merge = context.rename(columns={"decision_timestamp": "timestamp"})[
-                ["timestamp", "market_regime", "funding_rate", "open_interest", "basis_bps", "volatility"]
-            ].sort_values("timestamp")
-            frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
-            frame = pd.merge_asof(frame.sort_values("timestamp"), context_merge, on="timestamp", direction="backward")
-            appended_signals += _append_unique(league_store, "signals", frame, ["strategy_name", "strategy_version", "timestamp"])
-    for key, frame in pair_trades.items():
-        appended_trades += _append_unique(league_store, "hypothetical_trades", frame, ["strategy_name", "strategy_version", "entry_time", "exit_time"])
+    for frame in pair_signals.values():
+        appended_signals += _append_unique(
+            league_store,
+            "signals",
+            _attach_pair_context(frame, context),
+            ["strategy_name", "strategy_version", "timestamp"],
+        )
+    for frame in pair_trades.values():
+        appended_trades += _append_unique(
+            league_store,
+            "hypothetical_trades",
+            frame,
+            ["strategy_name", "strategy_version", "entry_time", "exit_time"],
+        )
 
     all_signals = league_store.read("signals")
     all_trades = league_store.read("hypothetical_trades")
-    latest_timestamp = pd.to_datetime(hourly[hourly["timestamp"] >= FORWARD_OOS_START_UTC]["timestamp"], utc=True).max()
+    latest_timestamp = pd.to_datetime(forward_hourly["timestamp"], utc=True).max()
 
     score_rows = []
     for record in registry.records.values():
-        trades = all_trades[
-            (all_trades.get("strategy_name") == record.strategy_name)
-            & (all_trades.get("strategy_version") == record.strategy_version)
-        ].copy() if not all_trades.empty else pd.DataFrame()
-        score = ForwardScorecard.from_trades(trades)
-        score_rows.append({
-            "timestamp": latest_timestamp,
-            "strategy_name": record.strategy_name,
-            "strategy_version": record.strategy_version,
-            "strategy_fingerprint": record.fingerprint,
-            **score,
-        })
+        if all_trades.empty:
+            strategy_trades = pd.DataFrame()
+        else:
+            strategy_trades = all_trades[
+                (all_trades["strategy_name"] == record.strategy_name)
+                & (all_trades["strategy_version"] == record.strategy_version)
+            ].copy()
+        score_rows.append(
+            {
+                "timestamp": latest_timestamp,
+                "strategy_name": record.strategy_name,
+                "strategy_version": record.strategy_version,
+                "strategy_fingerprint": record.fingerprint,
+                **ForwardScorecard.from_trades(strategy_trades),
+            }
+        )
     league_store.append("scorecards", score_rows)
 
     overlap = SignalOverlapAnalyzer.summarize(all_signals)
@@ -640,22 +726,24 @@ def run_forward_oos_league_once(
         overlap["timestamp"] = latest_timestamp
         league_store.append("overlap", overlap.to_dict("records"))
 
-    requests = _active_position_requests(all_signals)
-    conflicts = ConflictManager.analyze(requests)
-    conflict_row = {
-        "timestamp": latest_timestamp,
-        "analysis_json": json.dumps(conflicts, ensure_ascii=False, sort_keys=True, default=str),
-        "has_conflict": conflicts["has_conflict"],
-        "spot_exposure_btc": conflicts["spot_exposure_btc"],
-        "perpetual_exposure_btc": conflicts["perpetual_exposure_btc"],
-        "net_btc_delta": conflicts["net_btc_delta"],
-        "gross_exposure_btc": conflicts["gross_exposure_btc"],
-        "margin_usage": conflicts["margin_usage"],
-    }
-    league_store.append("conflicts", [conflict_row])
+    conflicts = ConflictManager.analyze(_active_position_requests(all_signals))
+    league_store.append(
+        "conflicts",
+        [
+            {
+                "timestamp": latest_timestamp,
+                "analysis_json": json.dumps(conflicts, ensure_ascii=False, sort_keys=True, default=str),
+                "has_conflict": conflicts["has_conflict"],
+                "spot_exposure_btc": conflicts["spot_exposure_btc"],
+                "perpetual_exposure_btc": conflicts["perpetual_exposure_btc"],
+                "net_btc_delta": conflicts["net_btc_delta"],
+                "gross_exposure_btc": conflicts["gross_exposure_btc"],
+                "margin_usage": conflicts["margin_usage"],
+            }
+        ],
+    )
 
-    latest_context = hourly[hourly["timestamp"] <= latest_timestamp]
-    regime = RegimeDetectorV1().detect(latest_context)
+    regime = RegimeDetectorV1().detect(hourly[hourly["timestamp"] <= latest_timestamp])
     selector_rows = StrategySelectorFoundation(registry).evaluate(regime, risk_gate_passed=risk_gate_passed)
     league_store.append("selector_decisions", selector_rows)
 
@@ -671,14 +759,16 @@ def run_forward_oos_league_once(
         "selector_candidates": [record.key for record in registry.selector_eligible()],
         "selector_decisions": selector_rows,
         "conflict_snapshot": conflicts,
-        "data_quality": data_quality,
+        "data_quality": quality,
         "collector_health": health,
         "runtime_frozen_parameter_check": runtime_check,
         "orders_enabled": False,
         "paper_trading_enabled": False,
         "auto_promotion_enabled": False,
     }
-    (Path(league_root) / "latest_league_run.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    (Path(league_root) / "latest_league_run.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
     return summary
 
 
@@ -689,8 +779,14 @@ def main() -> None:
     parser.add_argument("--symbol", default=SYMBOL)
     parser.add_argument("--risk-gate-passed", action="store_true", help="Hypothetical selector eligibility only")
     args = parser.parse_args()
-    result = run_forward_oos_league_once(args.store_root, args.league_root, args.symbol, args.risk_gate_passed)
-    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    print(
+        json.dumps(
+            run_forward_oos_league_once(args.store_root, args.league_root, args.symbol, args.risk_gate_passed),
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+    )
 
 
 if __name__ == "__main__":
