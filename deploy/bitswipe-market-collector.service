@@ -18,7 +18,7 @@ KillSignal=SIGTERM
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ProtectHome=true
+ProtectHome=false
 ReadWritePaths=__BITSWIPE_ROOT__/data/arena/market_store
 
 [Install]
