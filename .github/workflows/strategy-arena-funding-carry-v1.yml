@@ -6,6 +6,7 @@ on:
       - server-current-8000-2026-06-18
     paths:
       - 'strategy_arena/funding_carry_v1.py'
+      - 'strategy_arena/funding_carry_runner.py'
       - 'strategy_arena/funding_carry_research.py'
       - 'tests/test_funding_carry_v1.py'
       - '.github/workflows/strategy-arena-funding-carry-v1.yml'
@@ -38,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PYTHONPATH=. python -m strategy_arena.funding_carry_v1 \
+          PYTHONPATH=. python -m strategy_arena.funding_carry_runner \
             --symbol BTCUSDT \
             --start-month 2019-09 \
             --end-month 2026-06 \
