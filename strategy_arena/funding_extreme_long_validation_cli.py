@@ -9,14 +9,36 @@ from strategy_arena.backtest import BacktestEngine
 from strategy_arena.strategies import FundingExtremeReversalV1, Signal, SignalType
 
 
+class _ILocView:
+    def __init__(self, rows: list[dict]):
+        self.rows = rows
+
+    def __getitem__(self, index: int):
+        return self.rows[index]
+
+
+class _RollingHistoryView:
+    """Minimal dataframe-like view used only to execute the original v1 method faster."""
+
+    def __init__(self, rows: list[dict]):
+        self.rows = rows
+        self.iloc = _ILocView(rows)
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(self, column: str) -> pd.Series:
+        return pd.Series([row.get(column) for row in self.rows])
+
+
 @dataclass
 class BufferedDirectionFilteredFundingExtreme:
     """Runtime-only adapter that calls the frozen original v1 on its declared lookback.
 
-    The common engine normally passes all history seen so far. For multi-year repeated
-    validation runs that creates unnecessary dataframe copies. FundingExtremeReversalV1
-    declares max_lookback_bars=169, so retaining exactly that many past/current rows is
-    signal-equivalent while much faster. No strategy formula or parameter is copied here.
+    FundingExtremeReversalV1.generate_signal itself remains the only implementation of
+    z-score, momentum, entry, and exit logic. The adapter retains exactly the strategy's
+    declared 169-bar lookback and exposes a tiny dataframe-like view, avoiding repeated
+    copies of multi-year history during independent validation runs.
     """
 
     direction_mode: str = "BOTH"
@@ -33,7 +55,7 @@ class BufferedDirectionFilteredFundingExtreme:
         self._rows.append(history.iloc[-1].to_dict())
         if len(self._rows) > self.max_lookback_bars:
             self._rows.pop(0)
-        signal = self.inner.generate_signal(pd.DataFrame(self._rows), symbol, current_position)
+        signal = self.inner.generate_signal(_RollingHistoryView(self._rows), symbol, current_position)
         if current_position == 0:
             if self.direction_mode == "LONG_ONLY" and signal.signal == SignalType.SHORT:
                 return Signal(signal.strategy_name, signal.strategy_version, signal.timestamp, symbol, SignalType.HOLD, metadata={**signal.metadata, "direction_filter": "LONG_ONLY"})
