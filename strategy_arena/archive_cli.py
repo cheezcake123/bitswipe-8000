@@ -19,15 +19,23 @@ BASE = "https://data.binance.vision/data/futures/um/daily"
 KLINE_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume", "close_time", "quote_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"]
 
 
-def _download_csv(url: str, session: requests.Session) -> pd.DataFrame:
+def _download_archive_bytes(url: str, session: requests.Session) -> bytes:
     response = session.get(url, timeout=30)
     response.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
-        names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
-        if not names:
-            raise RuntimeError(f"No CSV in archive: {url}")
-        with zf.open(names[0]) as fh:
-            return pd.read_csv(fh)
+    return response.content
+
+
+def _csv_from_zip(content: bytes, *, header="infer", names=None) -> pd.DataFrame:
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        csv_names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
+        if not csv_names:
+            raise RuntimeError("No CSV in Binance Vision archive")
+        with zf.open(csv_names[0]) as fh:
+            return pd.read_csv(fh, header=header, names=names)
+
+
+def _download_csv(url: str, session: requests.Session) -> pd.DataFrame:
+    return _csv_from_zip(_download_archive_bytes(url, session))
 
 
 def _dates(start: date, end: date):
@@ -37,24 +45,24 @@ def _dates(start: date, end: date):
         current += timedelta(days=1)
 
 
+def _epoch_unit(series: pd.Series) -> str:
+    numeric = pd.to_numeric(series, errors="raise")
+    return "us" if numeric.abs().median() > 1e14 else "ms"
+
+
 def fetch_vision_ohlcv(symbol: str, start: date, end: date, session: requests.Session) -> pd.DataFrame:
     frames = []
     for day in _dates(start, end):
         ds = day.isoformat()
         url = f"{BASE}/klines/{symbol}/1h/{symbol}-1h-{ds}.zip"
-        raw = _download_csv(url, session)
-        # Binance Vision kline files may be headerless or have a header row.
-        if list(raw.columns) != KLINE_COLUMNS:
-            if len(raw.columns) == len(KLINE_COLUMNS):
-                raw.columns = KLINE_COLUMNS
-            else:
-                raw = pd.read_csv(io.BytesIO(session.get(url, timeout=30).content))
+        content = _download_archive_bytes(url, session)
+        raw = _csv_from_zip(content, header=None, names=KLINE_COLUMNS)
         frames.append(raw)
     df = pd.concat(frames, ignore_index=True)
-    if "timestamp" not in df.columns:
-        df.columns = KLINE_COLUMNS
-    df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"], errors="raise"), unit="ms", utc=True)
-    df["close_time"] = pd.to_datetime(pd.to_numeric(df["close_time"], errors="raise"), unit="ms", utc=True)
+    ts_unit = _epoch_unit(df["timestamp"])
+    close_unit = _epoch_unit(df["close_time"])
+    df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"], errors="raise"), unit=ts_unit, utc=True)
+    df["close_time"] = pd.to_datetime(pd.to_numeric(df["close_time"], errors="raise"), unit=close_unit, utc=True)
     for col in ["open", "high", "low", "close", "volume"]:
         df[col] = pd.to_numeric(df[col], errors="raise")
     df["symbol"] = symbol
@@ -66,6 +74,7 @@ def fetch_vision_ohlcv(symbol: str, start: date, end: date, session: requests.Se
 
 def fetch_vision_funding(symbol: str, start: date, end: date, session: requests.Session) -> pd.DataFrame:
     frames = []
+    missing_days = []
     for day in _dates(start, end):
         ds = day.isoformat()
         url = f"{BASE}/fundingRate/{symbol}/{symbol}-fundingRate-{ds}.zip"
@@ -73,10 +82,11 @@ def fetch_vision_funding(symbol: str, start: date, end: date, session: requests.
             frames.append(_download_csv(url, session))
         except requests.HTTPError as exc:
             if exc.response is not None and exc.response.status_code == 404:
+                missing_days.append(ds)
                 continue
             raise
     if not frames:
-        raise RuntimeError("No fundingRate archives available for requested period")
+        raise RuntimeError(f"No fundingRate archives available for requested period; missing={missing_days[:5]}")
     df = pd.concat(frames, ignore_index=True)
     time_col = next((c for c in ["calc_time", "fundingTime", "funding_time", "timestamp"] if c in df.columns), None)
     rate_col = next((c for c in ["last_funding_rate", "fundingRate", "funding_rate"] if c in df.columns), None)
@@ -93,7 +103,7 @@ def fetch_vision_funding(symbol: str, start: date, end: date, session: requests.
         "symbol": symbol,
         "source": "binance_vision_usdm",
         "funding_rate": pd.to_numeric(df[rate_col], errors="raise"),
-        "mark_price": pd.to_numeric(df.get("mark_price"), errors="coerce") if "mark_price" in df.columns else float("nan"),
+        "mark_price": pd.to_numeric(df["mark_price"], errors="coerce") if "mark_price" in df.columns else float("nan"),
     }).drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
     validate_source_table(out, "timestamp", "funding")
     return out
@@ -109,7 +119,6 @@ def fetch_vision_oi(symbol: str, start: date, end: date, session: requests.Sessi
     df["timestamp"] = pd.to_datetime(df["create_time"], utc=True)
     df["open_interest"] = pd.to_numeric(df["sum_open_interest"], errors="raise")
     df["open_interest_value"] = pd.to_numeric(df["sum_open_interest_value"], errors="coerce")
-    # Preserve actual publication timestamps. Keep every 5m point; backward as-of join selects only data available by candle close.
     out = df[["timestamp", "open_interest", "open_interest_value"]].copy()
     out["symbol"] = symbol
     out["source"] = "binance_vision_usdm"
