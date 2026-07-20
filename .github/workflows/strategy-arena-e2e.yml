@@ -21,7 +21,7 @@ jobs:
         run: |
           mkdir -p data/arena
           set +e
-          python -m strategy_arena.archive_cli --symbol BTCUSDT --start 2026-06-21 --end 2026-07-18 --data-dir data/arena --output-dir data/arena/results --leverage 2 > data/arena/e2e_run.log 2>&1
+          python -m strategy_arena.archive_cli --symbol BTCUSDT --start 2026-06-03 --end 2026-06-30 --data-dir data/arena --output-dir data/arena/results --leverage 2 > data/arena/e2e_run.log 2>&1
           code=$?
           cat data/arena/e2e_run.log
           exit $code
