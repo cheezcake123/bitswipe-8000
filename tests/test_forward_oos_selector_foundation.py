@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pandas as pd
 import pytest
 
+from strategy_arena.forward_oos_league_runner import _common_results
 from strategy_arena.forward_oos_live_runner import run_live_snapshot
 from strategy_arena.forward_oos_runtime import validate_frozen_runtime_parameters
 from strategy_arena.forward_oos_selector_foundation import (
@@ -31,6 +33,32 @@ def _hourly(funding_rate: float) -> pd.DataFrame:
         "volume": 1.0,
         "funding_rate": funding_rate,
     })
+
+
+def _engine_hourly() -> tuple[pd.DataFrame, pd.DataFrame]:
+    ts = pd.date_range("2026-06-20T00:00:00Z", periods=24 * 14, freq="1h")
+    idx = np.arange(len(ts), dtype=float)
+    close = 100.0 + idx * 0.05
+    hourly = pd.DataFrame({
+        "timestamp": ts,
+        "close_time": ts + pd.Timedelta(hours=1) - pd.Timedelta(milliseconds=1),
+        "decision_timestamp": ts + pd.Timedelta(hours=1) - pd.Timedelta(milliseconds=1),
+        "symbol": "BTCUSDT",
+        "source": "test",
+        "open": close - 0.02,
+        "high": close + 0.10,
+        "low": close - 0.10,
+        "close": close,
+        "volume": 1.0,
+        "funding_rate": 0.0001,
+        "funding_available_at": ts,
+        "funding_payment_rate": 0.0,
+        "open_interest": 1_000.0 + idx,
+        "oi_available_at": ts,
+    })
+    funding_ts = pd.date_range(ts.min(), ts.max(), freq="8h")
+    funding = pd.DataFrame({"timestamp": funding_ts, "funding_rate": 0.0001})
+    return hourly, funding
 
 
 def test_registry_policy_and_frozen_runtime_parameters() -> None:
@@ -79,6 +107,21 @@ def test_post_boundary_archive_backfill_is_not_forward_oos(tmp_path) -> None:
     result = run_live_snapshot(str(market_root), str(tmp_path / "league"))
     assert result["accepted_forward_source"] == "binance_usdm_rest"
     assert result["forward_live_rows_available"] == 0
+
+
+def test_frozen_common_strategy_runner_executes_existing_implementations() -> None:
+    hourly, funding = _engine_hourly()
+    results = _common_results(hourly, funding)
+    assert set(results) == {
+        "funding_extreme_reversal:v1",
+        "oi_momentum:v1",
+        "volatility_adjusted_trend_breakout:v1",
+        "volatility_compression_breakout:v1",
+        "funding_aligned_momentum:v1",
+    }
+    for result in results.values():
+        assert result.strategy_version == "v1"
+        assert not result.signals.empty
 
 
 def test_regime_detector_is_multilabel() -> None:
