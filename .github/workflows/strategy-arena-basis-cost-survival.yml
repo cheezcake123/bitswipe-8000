@@ -6,6 +6,7 @@ on:
       - server-current-8000-2026-06-18
     paths:
       - 'strategy_arena/basis_execution.py'
+      - 'strategy_arena/basis_execution_runner.py'
       - 'strategy_arena/basis_research.py'
       - 'strategy_arena/market_store.py'
       - '.github/workflows/strategy-arena-basis-cost-survival.yml'
@@ -27,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data/arena
-          python -m strategy_arena.basis_execution \
+          python -m strategy_arena.basis_execution_runner \
             --symbol BTCUSDT \
             --start-month 2020-01 \
             --end-month 2026-06 \
