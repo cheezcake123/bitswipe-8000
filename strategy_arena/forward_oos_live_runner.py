@@ -35,10 +35,19 @@ def _hourly_with_known_funding(store: AppendOnlyMarketStore, symbol: str) -> tup
     hourly = (
         combined.set_index("timestamp")
         .resample("1h")
-        .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
-        .dropna()
+        .agg(
+            open=("open", "first"),
+            high=("high", "max"),
+            low=("low", "min"),
+            close=("close", "last"),
+            volume=("volume", "sum"),
+            minute_bars=("close", "count"),
+        )
+        .dropna(subset=["open", "high", "low", "close"])
         .reset_index()
     )
+    # Never classify a regime from a partially collected current hour.
+    hourly = hourly[hourly["minute_bars"] == 60].copy().reset_index(drop=True)
     hourly["decision_timestamp"] = hourly["timestamp"] + pd.Timedelta(hours=1) - pd.Timedelta(milliseconds=1)
 
     funding_history = store.read("funding_rate", symbol=symbol, end=FORWARD_OOS_START_UTC - pd.Timedelta(milliseconds=1))
@@ -67,21 +76,24 @@ def run_live_snapshot(store_root: str, league_root: str, symbol: str = "BTCUSDT"
     league_store = AppendOnlyLeagueStore(league_root)
     health = collector_health_snapshot(market_store)
     hourly, live_minutes = _hourly_with_known_funding(market_store, symbol)
+    forward_hourly = hourly[hourly["timestamp"] >= FORWARD_OOS_START_UTC] if not hourly.empty else pd.DataFrame()
 
-    if live_minutes.empty or hourly.empty:
+    if live_minutes.empty or forward_hourly.empty:
         result = {
             "forward_oos_start_utc": FORWARD_OOS_START_UTC.isoformat(),
             "accepted_forward_source": LIVE_FUTURES_SOURCE,
-            "forward_live_rows_available": 0,
+            "forward_live_rows_available": int(len(live_minutes)),
+            "forward_complete_hours_available": 0,
             "selector_decisions_written": 0,
             "collector_health": health,
             "orders_enabled": False,
             "paper_trading_enabled": False,
-            "note": "No Forward OOS rows from the live append-only collector source are available.",
+            "note": "No complete Forward OOS hourly candle from the live append-only collector source is available.",
         }
     else:
-        latest_live = pd.to_datetime(live_minutes["timestamp"], utc=True).max()
-        context = hourly[hourly["timestamp"] <= latest_live].copy()
+        latest_live_minute = pd.to_datetime(live_minutes["timestamp"], utc=True).max()
+        latest_complete_hour = pd.to_datetime(forward_hourly["timestamp"], utc=True).max()
+        context = hourly[hourly["timestamp"] <= latest_complete_hour].copy()
         regime = RegimeDetectorV1().detect(context)
         decisions = StrategySelectorFoundation(registry).evaluate(regime, risk_gate_passed=risk_gate_passed)
         league_store.append("selector_decisions", decisions)
@@ -89,7 +101,9 @@ def run_live_snapshot(store_root: str, league_root: str, symbol: str = "BTCUSDT"
             "forward_oos_start_utc": FORWARD_OOS_START_UTC.isoformat(),
             "accepted_forward_source": LIVE_FUTURES_SOURCE,
             "forward_live_rows_available": int(len(live_minutes)),
-            "latest_forward_timestamp": latest_live.isoformat(),
+            "forward_complete_hours_available": int(len(forward_hourly)),
+            "latest_live_minute_timestamp": latest_live_minute.isoformat(),
+            "latest_complete_hour_timestamp": latest_complete_hour.isoformat(),
             "latest_regime": asdict(regime),
             "selector_decisions_written": len(decisions),
             "risk_gate_passed": bool(risk_gate_passed),
@@ -103,7 +117,7 @@ def run_live_snapshot(store_root: str, league_root: str, symbol: str = "BTCUSDT"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run one live-source-only Forward OOS selector foundation snapshot; no orders")
+    parser = argparse.ArgumentParser(description="Run one complete-candle live-source-only Forward OOS selector snapshot; no orders")
     parser.add_argument("--store-root", default="data/arena/market_store")
     parser.add_argument("--league-root", default=DEFAULT_LEAGUE_ROOT)
     parser.add_argument("--symbol", default="BTCUSDT")
