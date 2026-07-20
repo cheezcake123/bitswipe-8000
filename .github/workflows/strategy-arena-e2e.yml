@@ -18,7 +18,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Run Strategy Arena 28-day E2E backtest from Binance Vision archives
-        run: python -m strategy_arena.archive_cli --symbol BTCUSDT --start 2026-06-21 --end 2026-07-18 --data-dir data/arena --output-dir data/arena/results --leverage 2
+        run: |
+          mkdir -p data/arena
+          set +e
+          python -m strategy_arena.archive_cli --symbol BTCUSDT --start 2026-06-21 --end 2026-07-18 --data-dir data/arena --output-dir data/arena/results --leverage 2 > data/arena/e2e_run.log 2>&1
+          code=$?
+          cat data/arena/e2e_run.log
+          exit $code
       - name: List result files
         if: always()
         run: find data/arena -maxdepth 6 -type f | sort || true
