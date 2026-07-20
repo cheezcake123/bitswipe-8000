@@ -74,6 +74,93 @@ def load_hourly_futures(symbol: str, start_month: str, end_month: str, workers: 
     return data[["timestamp", "close_time", "decision_timestamp", "symbol", "source", "open", "high", "low", "close", "volume"]]
 
 
+def add_precomputed_trend_features(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Precompute fixed v1 signals from past-only daily data, then map them to 23:00 UTC bars.
+
+    This is a performance optimization only. Donchian channels are shifted one full day,
+    and the volatility reference uses prior ATR observations, so no future information is used.
+    """
+    out = hourly.copy()
+    daily = (
+        out.set_index("timestamp")
+        .resample("1D")
+        .agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+            "symbol": "count",
+        })
+        .rename(columns={"symbol": "bars"})
+        .dropna(subset=["open", "high", "low", "close"])
+        .reset_index()
+    )
+
+    prev_close = daily["close"].shift(1)
+    tr = pd.concat(
+        [
+            daily["high"] - daily["low"],
+            (daily["high"] - prev_close).abs(),
+            (daily["low"] - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    atr = tr.rolling(14, min_periods=14).mean()
+    atr_pct = atr / daily["close"]
+    vol_reference = atr_pct.shift(1).rolling(252, min_periods=126).median()
+    size_hint = (vol_reference / atr_pct).clip(lower=0.0, upper=1.0)
+
+    entry_upper = daily["high"].rolling(55, min_periods=55).max().shift(1)
+    entry_lower = daily["low"].rolling(55, min_periods=55).min().shift(1)
+    exit_upper = daily["high"].rolling(20, min_periods=20).max().shift(1)
+    exit_lower = daily["low"].rolling(20, min_periods=20).min().shift(1)
+
+    daily["trend_entry_upper"] = entry_upper
+    daily["trend_entry_lower"] = entry_lower
+    daily["trend_exit_upper"] = exit_upper
+    daily["trend_exit_lower"] = exit_lower
+    daily["trend_atr_pct"] = atr_pct
+    daily["trend_volatility_reference"] = vol_reference
+    daily["trend_position_size_hint"] = size_hint
+    daily["trend_entry_long"] = daily["close"] > entry_upper
+    daily["trend_entry_short"] = daily["close"] < entry_lower
+    daily["trend_exit_long"] = daily["close"] < exit_lower
+    daily["trend_exit_short"] = daily["close"] > exit_upper
+    daily["trend_ready"] = (
+        (daily["bars"] == 24)
+        & entry_upper.notna()
+        & entry_lower.notna()
+        & exit_upper.notna()
+        & exit_lower.notna()
+        & atr_pct.notna()
+        & vol_reference.notna()
+        & size_hint.notna()
+    )
+    daily["decision_hour"] = daily["timestamp"] + pd.Timedelta(hours=23)
+
+    feature_cols = [
+        "decision_hour",
+        "trend_ready",
+        "trend_position_size_hint",
+        "trend_entry_upper",
+        "trend_entry_lower",
+        "trend_exit_upper",
+        "trend_exit_lower",
+        "trend_atr_pct",
+        "trend_volatility_reference",
+        "trend_entry_long",
+        "trend_entry_short",
+        "trend_exit_long",
+        "trend_exit_short",
+    ]
+    out = out.merge(daily[feature_cols], left_on="timestamp", right_on="decision_hour", how="left", validate="one_to_one")
+    out = out.drop(columns=["decision_hour"])
+    for col in ["trend_ready", "trend_entry_long", "trend_entry_short", "trend_exit_long", "trend_exit_short"]:
+        out[col] = out[col].fillna(False).astype(bool)
+    return out
+
+
 def attach_funding(hourly: pd.DataFrame, funding: pd.DataFrame) -> pd.DataFrame:
     out = hourly.copy()
     if funding.empty:
@@ -102,9 +189,9 @@ def daily_regimes(hourly: pd.DataFrame) -> pd.DataFrame:
 def _safe_number(value):
     if isinstance(value, (float, np.floating)) and (math.isnan(float(value)) or math.isinf(float(value))):
         return None
-    if isinstance(value, (np.integer,)):
+    if isinstance(value, np.integer):
         return int(value)
-    if isinstance(value, (np.floating,)):
+    if isinstance(value, np.floating):
         return float(value)
     return value
 
@@ -149,8 +236,7 @@ def trade_attribution(trades: pd.DataFrame, regimes: pd.DataFrame) -> pd.DataFra
 
 
 def run_pair(data: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> tuple[object, object]:
-    strategy = VolatilityAdjustedTrendBreakoutV1()
-    net = BacktestEngine(NET_CONFIG).run(data, strategy, start, end)
+    net = BacktestEngine(NET_CONFIG).run(data, VolatilityAdjustedTrendBreakoutV1(), start, end)
     no_funding = data.copy()
     no_funding["funding_payment_rate"] = 0.0
     gross = BacktestEngine(GROSS_CONFIG).run(no_funding, VolatilityAdjustedTrendBreakoutV1(), start, end)
@@ -214,10 +300,11 @@ def main() -> None:
 
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    hourly = load_hourly_futures(args.symbol, args.start_month, args.end_month, args.workers)
+    hourly_raw = load_hourly_futures(args.symbol, args.start_month, args.end_month, args.workers)
+    hourly = add_precomputed_trend_features(hourly_raw)
     funding = fetch_funding(args.symbol, args.start_month, args.end_month)
     data = attach_funding(hourly, funding)
-    regimes = daily_regimes(hourly)
+    regimes = daily_regimes(hourly_raw)
 
     eval_start = pd.Timestamp(args.evaluation_start, tz="UTC")
     eval_data = data[data["timestamp"] >= eval_start]
@@ -279,18 +366,18 @@ def main() -> None:
     comparison = common_28d_comparison(data, args.symbol)
     comparison.to_csv(out / "common_28d_comparison.csv", index=False)
 
-    expected_hours = int((hourly["timestamp"].max() - hourly["timestamp"].min()) / pd.Timedelta(hours=1)) + 1
+    expected_hours = int((hourly_raw["timestamp"].max() - hourly_raw["timestamp"].min()) / pd.Timedelta(hours=1)) + 1
     full_summary = {
         "strategy": "volatility_adjusted_trend_breakout",
         "version": "v1",
         "rule": asdict(VolatilityAdjustedTrendBreakoutV1()),
         "parameter_optimization": False,
         "data": {
-            "start": hourly["timestamp"].min().isoformat(),
-            "end": hourly["timestamp"].max().isoformat(),
-            "hourly_rows": int(len(hourly)),
+            "start": hourly_raw["timestamp"].min().isoformat(),
+            "end": hourly_raw["timestamp"].max().isoformat(),
+            "hourly_rows": int(len(hourly_raw)),
             "expected_hours": expected_hours,
-            "missing_hours": int(expected_hours - len(hourly)),
+            "missing_hours": int(expected_hours - len(hourly_raw)),
             "funding_events": int(len(funding)),
             "source": "Binance Vision USD-M official public archives",
         },
@@ -309,6 +396,7 @@ def main() -> None:
             "Position size is capped at 100% equity before leverage and reduced when current ATR% exceeds its trailing median; leverage is capped at 2x.",
             "Gross run removes fee, slippage and funding; Net run uses the common 5bp taker fee, 5bp slippage and actual archived funding events.",
             "Regime results are trade-entry attribution, not a regime-filtered optimized strategy.",
+            "Precomputed Donchian and ATR features use shifted past-only windows; this changes runtime only, not strategy rules.",
         ],
     }
     (out / "summary.json").write_text(json.dumps(full_summary, ensure_ascii=False, indent=2), encoding="utf-8")
