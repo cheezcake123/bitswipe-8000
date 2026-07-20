@@ -1,0 +1,41 @@
+name: Strategy Arena Trend Breakout Research
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/trend_breakout_research.py'
+      - 'strategy_arena/trend_breakout_v1.py'
+      - 'strategy_arena/backtest.py'
+      - '.github/workflows/strategy-arena-trend-breakout-research.yml'
+  workflow_dispatch:
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run fixed 20d/55d relationship study
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m strategy_arena.trend_breakout_research \
+            --symbol BTCUSDT \
+            --start-month 2020-01 \
+            --end-month 2026-06 \
+            --output-dir data/arena/trend_breakout_research \
+            --workers 6
+      - name: Upload research
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-trend-breakout-research
+          path: data/arena/trend_breakout_research
+          retention-days: 90
+          if-no-files-found: error
