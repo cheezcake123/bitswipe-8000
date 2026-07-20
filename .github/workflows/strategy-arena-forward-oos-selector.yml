@@ -42,6 +42,7 @@ jobs:
       - name: Initialize empty live-source-only Forward OOS League snapshot
         run: |
           set -euo pipefail
+          mkdir -p data/arena
           python -m strategy_arena.forward_oos_live_runner \
             --store-root data/arena/ci-empty-market-store \
             --league-root data/arena/ci-forward-oos-league \
