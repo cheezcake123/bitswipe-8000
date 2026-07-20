@@ -5,6 +5,7 @@ import json
 import pandas as pd
 import pytest
 
+from strategy_arena.forward_oos_live_runner import run_live_snapshot
 from strategy_arena.forward_oos_runtime import validate_frozen_runtime_parameters
 from strategy_arena.forward_oos_selector_foundation import (
     FORWARD_OOS_START_UTC,
@@ -15,6 +16,7 @@ from strategy_arena.forward_oos_selector_foundation import (
     StrategySelectorFoundation,
     load_default_registry,
 )
+from strategy_arena.market_store import AppendOnlyMarketStore
 
 
 def _hourly(funding_rate: float) -> pd.DataFrame:
@@ -58,6 +60,27 @@ def test_forward_oos_start_is_fixed_and_historical_rows_are_rejected(tmp_path) -
     assert pd.Timestamp(metadata["forward_oos_start_utc"]) == FORWARD_OOS_START_UTC
     with pytest.raises(ValueError):
         store.append("signals", [{"timestamp": "2026-06-30T23:00:00Z", "strategy_name": "x", "signal": "HOLD"}])
+
+
+def test_post_boundary_archive_backfill_is_not_forward_oos(tmp_path) -> None:
+    market_root = tmp_path / "market"
+    market = AppendOnlyMarketStore(market_root)
+    ts = pd.Timestamp("2026-07-02T00:00:00Z")
+    archive_row = pd.DataFrame([{
+        "timestamp": ts,
+        "close_time": ts + pd.Timedelta(minutes=1) - pd.Timedelta(milliseconds=1),
+        "symbol": "BTCUSDT",
+        "source": "binance_vision_usdm",
+        "open": 100.0,
+        "high": 101.0,
+        "low": 99.0,
+        "close": 100.5,
+        "volume": 1.0,
+    }])
+    market.append("futures_ohlcv", archive_row)
+    result = run_live_snapshot(str(market_root), str(tmp_path / "league"))
+    assert result["accepted_forward_source"] == "binance_usdm_rest"
+    assert result["forward_live_rows_available"] == 0
 
 
 def test_regime_detector_is_backward_only_and_multilabel() -> None:
