@@ -1,0 +1,66 @@
+name: Strategy Arena Forward OOS Selector Foundation
+
+on:
+  pull_request:
+    branches:
+      - server-current-8000-2026-06-18
+    paths:
+      - 'strategy_arena/forward_oos_selector_foundation.py'
+      - 'strategy_arena/forward_oos_runtime.py'
+      - 'strategy_arena/frozen_strategy_registry.json'
+      - 'strategy_arena/promotion_gates.json'
+      - 'strategy_arena/FORWARD_OOS_SELECTOR_FOUNDATION.md'
+      - 'tests/test_forward_oos_selector_foundation.py'
+      - '.github/workflows/strategy-arena-forward-oos-selector.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Run frozen registry and selector foundation tests
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_strategy_arena_mvp.py \
+            tests/test_funding_carry_v1.py \
+            tests/test_funding_extreme_long_validation.py \
+            tests/test_forward_oos_selector_foundation.py
+      - name: Initialize empty Forward OOS League snapshot
+        run: |
+          set -euo pipefail
+          python -m strategy_arena.forward_oos_selector_foundation \
+            --store-root data/arena/ci-empty-market-store \
+            --league-root data/arena/ci-forward-oos-league \
+            | tee data/arena/forward-oos-selector-foundation.log
+      - name: Verify no order or paper activation flags
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('data/arena/ci-forward-oos-league/league_metadata.json')
+          data = json.loads(p.read_text())
+          assert data['orders_enabled'] is False
+          assert data['paper_trading_enabled'] is False
+          assert data['auto_promotion_enabled'] is False
+          print(json.dumps(data, indent=2))
+          PY
+      - name: Upload foundation validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-arena-forward-oos-selector-foundation
+          path: |
+            data/arena/ci-forward-oos-league
+            data/arena/forward-oos-selector-foundation.log
+          retention-days: 90
