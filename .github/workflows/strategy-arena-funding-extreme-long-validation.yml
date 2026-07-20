@@ -6,6 +6,7 @@ on:
       - server-current-8000-2026-06-18
     paths:
       - 'strategy_arena/funding_extreme_long_validation.py'
+      - 'strategy_arena/funding_extreme_long_validation_cli.py'
       - 'tests/test_funding_extreme_long_validation.py'
       - '.github/workflows/strategy-arena-funding-extreme-long-validation.yml'
   workflow_dispatch:
@@ -40,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m strategy_arena.funding_extreme_long_validation \
+          python -m strategy_arena.funding_extreme_long_validation_cli \
             --symbol BTCUSDT \
             --start-month 2019-09 \
             --end-month 2026-06 \
