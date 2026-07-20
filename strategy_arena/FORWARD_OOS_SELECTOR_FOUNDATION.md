@@ -9,6 +9,7 @@ This layer is supervision infrastructure only. It creates no exchange orders, do
 - Pre-start data may be used only as backward-looking warm-up context.
 - Forward League observations, hypothetical fills/trades and selector decisions reject timestamps before the Forward OOS start.
 - `league_metadata.json` stores the start and refuses later mutation.
+- Forward scoring accepts only live Collector sources after the boundary: Futures/Funding/OI use `binance_usdm_rest`; Spot uses `binance_spot_rest`. Binance Vision archive rows remain warm-up/history only and cannot enter Forward OOS performance.
 
 ## Frozen Strategy Registry
 
@@ -27,6 +28,7 @@ Current selector policy:
 
 ```text
 Append-only Market Store
+  -> Live-source boundary filter
   -> Frozen Strategy adapters / existing implementations
   -> Forward OOS signal recorder
   -> Regime Detector v1
@@ -129,17 +131,17 @@ Signal overlap analysis records same-timestamp overlap, same-direction overlap, 
 
 Numeric thresholds are intentionally `null`: they must be chosen prospectively rather than fitted to the already observed OOS. Automatic promotion is disabled and explicit user approval is mandatory.
 
-## Running a foundation snapshot
+## Running a live-source-only foundation snapshot
 
 Read-only with respect to exchange/account state:
 
 ```bash
-python -m strategy_arena.forward_oos_selector_foundation \
+python -m strategy_arena.forward_oos_live_runner \
   --store-root data/arena/market_store \
   --league-root data/arena/forward_oos_league
 ```
 
-This inspects available append-only market data, emits a rule-based regime snapshot and hypothetical selector eligibility. The foundation snapshot deliberately uses `risk_gate_passed=false`, so it cannot activate an order or Paper allocation.
+The runner accepts post-boundary Futures rows only from `binance_usdm_rest`. Historical archive data can provide pre-boundary warm-up context but cannot be counted as Forward OOS. By default the Risk Gate is false, so no strategy becomes eligible. Supplying `--risk-gate-passed` can only change the recorded hypothetical eligibility decision; Paper and Live order creation remain disabled.
 
 ## Collector deployment check
 
