@@ -25,15 +25,13 @@ Observed from the production service virtual environment:
 
 Observed by the expanded production virtual-environment inventory:
 
-- certifi 2026.5.20 — MPL-2.0
-- tqdm 4.67.3 — MPL-2.0 AND MIT
-- peewee 4.0.6 — package metadata reported UNKNOWN by the installed distribution
+- certifi 2026.5.20 — MPL-2.0; installed distribution includes `certifi-2026.5.20.dist-info/licenses/LICENSE`
+- tqdm 4.67.3 — package metadata reports `MPL-2.0 AND MIT`; the installed distribution inventory did not list a LICENSE/COPYING/NOTICE file
+- peewee 4.0.6 — installed package metadata reports UNKNOWN, but the installed distribution includes `peewee-4.0.6.dist-info/licenses/LICENSE`
 
-The presence of MPL metadata is a review trigger, not a conclusion that the downstream application must use MPL. Distribution method, modification status, and notice/source obligations still need to be considered.
+Version-specific upstream verification for Peewee 4.0.6 confirmed that its tagged LICENSE is an MIT-form permission notice with a Charles Leifer copyright notice. The installed UNKNOWN metadata is therefore treated as incomplete package metadata, not evidence of a proprietary or unknown license.
 
-Peewee 4.0.6 needs version-specific confirmation. Older Peewee 3.x package metadata identified MIT, but that historical metadata is not treated here as proof for 4.0.6.
-
-The audit script reports installed LICENSE/COPYING/NOTICE file paths for all manually flagged packages so the deployed artifacts can be inspected without guessing from historical metadata.
+MPL-2.0 is file-level copyleft. Its presence in a server-side dependency does not by itself relicense unrelated downstream files. Obligations depend on whether covered software is modified and whether copies of covered software are distributed outside the organization. A hosted web service is not treated here as equivalent to distributing the server-side Python package itself.
 
 ## Browser dependencies referenced by the legacy root page
 
@@ -47,9 +45,8 @@ The page also references Binance API hosts, jsDelivr, Google Fonts, and bitswipe
 
 ## Remaining work
 
-- inspect installed license/notice paths for certifi, tqdm, and peewee 4.0.6
 - review static images, icons, screenshots, and copied frontend assets
-- determine whether deployment artifacts will redistribute third-party binaries or only reference/install them
-- prepare complete license texts and required notices for any redistributed components
-- recover or verify the upstream project's exact copyright/license notice before choosing the downstream project's own license
+- determine whether deployment or download artifacts will redistribute third-party packages rather than only run them server-side
+- prepare complete license texts and required notices for components actually redistributed
+- recover or independently verify the original upstream project's exact copyright/license notice before choosing a downstream root LICENSE
 - keep upstream project provenance separate from the downstream project's own license decision
