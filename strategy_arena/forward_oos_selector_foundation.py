@@ -16,7 +16,11 @@ from strategy_arena.funding_carry_v1 import FundingCarryV1Config
 from strategy_arena.market_store import AppendOnlyMarketStore
 
 HISTORICAL_BACKTEST_CUTOFF_UTC = pd.Timestamp("2026-06-30T23:59:59.999Z")
-FORWARD_OOS_START_UTC = pd.Timestamp("2026-07-01T00:00:00Z")
+PLANNED_FORWARD_OOS_START_UTC = pd.Timestamp("2026-07-01T00:00:00Z")
+OPERATIONAL_FORWARD_OOS_START_UTC = pd.Timestamp("2026-07-21T15:00:00Z")
+OPERATIONAL_FORWARD_OOS_START_REASON = "collector_not_running_at_planned_boundary"
+# Backward-compatible internal alias. All scoring/writes use the operational frozen boundary.
+FORWARD_OOS_START_UTC = OPERATIONAL_FORWARD_OOS_START_UTC
 DEFAULT_LEAGUE_ROOT = "data/arena/forward_oos_league"
 REGISTRY_FILENAME = "frozen_strategy_registry.json"
 
@@ -65,8 +69,12 @@ class FrozenStrategyRegistry:
     @classmethod
     def from_json(cls, path: str | Path) -> "FrozenStrategyRegistry":
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        if pd.Timestamp(payload["forward_oos_start_utc"]) != FORWARD_OOS_START_UTC:
-            raise ValueError("Forward OOS start is immutable and does not match code constant")
+        if pd.Timestamp(payload["planned_forward_oos_start_utc"]) != PLANNED_FORWARD_OOS_START_UTC:
+            raise ValueError("Planned Forward OOS start does not match the audited original boundary")
+        if pd.Timestamp(payload["operational_forward_oos_start_utc"]) != OPERATIONAL_FORWARD_OOS_START_UTC:
+            raise ValueError("Operational Forward OOS start is frozen and does not match code constant")
+        if payload.get("operational_start_reason") != OPERATIONAL_FORWARD_OOS_START_REASON:
+            raise ValueError("Operational Forward OOS start reason does not match the audited reason")
         return cls(FrozenStrategyRecord(**item) for item in payload["strategies"])
 
     def _validate_policy(self) -> None:
@@ -265,16 +273,48 @@ class AppendOnlyLeagueStore:
         path = self.root / "league_metadata.json"
         expected = {
             "historical_backtest_cutoff_utc": HISTORICAL_BACKTEST_CUTOFF_UTC.isoformat(),
-            "forward_oos_start_utc": FORWARD_OOS_START_UTC.isoformat(),
-            "immutable_start": True,
+            "planned_forward_oos_start_utc": PLANNED_FORWARD_OOS_START_UTC.isoformat(),
+            "operational_forward_oos_start_utc": OPERATIONAL_FORWARD_OOS_START_UTC.isoformat(),
+            "operational_start_reason": OPERATIONAL_FORWARD_OOS_START_REASON,
+            "operational_start_frozen": True,
+            "forward_oos_start_utc": OPERATIONAL_FORWARD_OOS_START_UTC.isoformat(),
+            "pre_operational_data_policy": "warmup_only_never_forward_scored",
             "orders_enabled": False,
             "paper_trading_enabled": False,
             "auto_promotion_enabled": False,
         }
         if path.exists():
             current = json.loads(path.read_text(encoding="utf-8"))
-            if current.get("forward_oos_start_utc") != expected["forward_oos_start_utc"]:
-                raise RuntimeError("Forward OOS start cannot be changed after initialization")
+            if "planned_forward_oos_start_utc" in current:
+                immutable_keys = (
+                    "planned_forward_oos_start_utc",
+                    "operational_forward_oos_start_utc",
+                    "operational_start_reason",
+                )
+                if any(current.get(key) != expected[key] for key in immutable_keys):
+                    raise RuntimeError("Forward OOS planned/operational boundaries cannot change after freeze")
+                if current.get("orders_enabled") is not False or current.get("paper_trading_enabled") is not False:
+                    raise RuntimeError("Forward OOS safety flags must remain disabled")
+                return
+
+            legacy_start = current.get("forward_oos_start_utc")
+            if legacy_start != PLANNED_FORWARD_OOS_START_UTC.isoformat():
+                raise RuntimeError("Unexpected legacy Forward OOS metadata boundary")
+            existing_parts = [
+                part
+                for dataset in self.DATASETS
+                for part in (self.root / dataset).rglob("part-*.parquet")
+                if part.is_file()
+            ]
+            if existing_parts:
+                raise RuntimeError("Operational Forward OOS start cannot be rebased after League records exist")
+            migrated = {
+                **expected,
+                "legacy_planned_metadata_migrated": True,
+                "legacy_forward_oos_start_utc": legacy_start,
+                "metadata_migration_reason": OPERATIONAL_FORWARD_OOS_START_REASON,
+            }
+            path.write_text(json.dumps(migrated, indent=2), encoding="utf-8")
         else:
             path.write_text(json.dumps(expected, indent=2), encoding="utf-8")
 
@@ -287,10 +327,12 @@ class AppendOnlyLeagueStore:
         if "timestamp" not in frame.columns:
             frame["timestamp"] = pd.Timestamp(datetime.now(timezone.utc)).floor("ms")
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True).astype("datetime64[ms, UTC]")
-        if (frame["timestamp"] < FORWARD_OOS_START_UTC).any():
-            raise ValueError("Historical/backtest rows cannot be written into Forward OOS League")
+        if (frame["timestamp"] < OPERATIONAL_FORWARD_OOS_START_UTC).any():
+            raise ValueError("Pre-operational rows cannot be written into Forward OOS League")
         frame["recorded_at_utc"] = pd.Timestamp(datetime.now(timezone.utc)).floor("ms")
-        frame["forward_oos_start_utc"] = FORWARD_OOS_START_UTC
+        frame["planned_forward_oos_start_utc"] = PLANNED_FORWARD_OOS_START_UTC
+        frame["operational_forward_oos_start_utc"] = OPERATIONAL_FORWARD_OOS_START_UTC
+        frame["forward_oos_start_utc"] = OPERATIONAL_FORWARD_OOS_START_UTC
         day = frame["timestamp"].min().strftime("%Y-%m-%d")
         directory = self.root / dataset / f"date={day}"
         directory.mkdir(parents=True, exist_ok=True)
