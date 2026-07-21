@@ -54,12 +54,17 @@ jobs:
             --store-root data/arena/ci-empty-market-store \
             --league-root data/arena/ci-forward-oos-league \
             | tee -a data/arena/forward-oos-selector-foundation.log
-      - name: Verify safety flags and live-source boundary
+      - name: Verify frozen boundaries, safety flags and live-source boundary
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           metadata = json.loads(Path('data/arena/ci-forward-oos-league/league_metadata.json').read_text())
+          assert metadata['planned_forward_oos_start_utc'] == '2026-07-01T00:00:00+00:00'
+          assert metadata['operational_forward_oos_start_utc'] == '2026-07-21T15:00:00+00:00'
+          assert metadata['operational_start_reason'] == 'collector_not_running_at_planned_boundary'
+          assert metadata['forward_oos_start_utc'] == metadata['operational_forward_oos_start_utc']
+          assert metadata['pre_operational_data_policy'] == 'warmup_only_never_forward_scored'
           assert metadata['orders_enabled'] is False
           assert metadata['paper_trading_enabled'] is False
           assert metadata['auto_promotion_enabled'] is False
@@ -69,8 +74,10 @@ jobs:
           assert live['paper_trading_enabled'] is False
           league = json.loads(Path('data/arena/ci-forward-oos-league/latest_league_run.json').read_text())
           assert league['status'] == 'NO_LIVE_FORWARD_DATA'
+          assert league['forward_oos_start_utc'] == '2026-07-21T15:00:00+00:00'
           assert league['orders_enabled'] is False
           assert league['paper_trading_enabled'] is False
+          assert league['auto_promotion_enabled'] is False
           print(json.dumps(league, indent=2))
           PY
       - name: Upload foundation validation artifact

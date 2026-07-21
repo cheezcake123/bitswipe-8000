@@ -2,14 +2,19 @@
 
 This layer is supervision infrastructure only. It creates no exchange orders, does not start Paper Trading, does not auto-promote strategies, and does not allow AI to override frozen strategy signals.
 
-## Immutable Forward OOS boundary
+## Frozen Forward OOS boundaries
 
 - Historical/backtest cutoff: `2026-06-30T23:59:59.999Z`
-- Forward OOS start: `2026-07-01T00:00:00Z`
-- Pre-start data may be used only as backward-looking warm-up context.
-- Forward League records reject pre-start timestamps.
-- Forward scoring accepts post-boundary live Collector sources only: `binance_usdm_rest` for Futures/Funding/OI and `binance_spot_rest` for Spot.
+- Planned Forward OOS start: `2026-07-01T00:00:00Z`
+- Operational Forward OOS start: `2026-07-21T15:00:00Z`
+- Audit reason: `collector_not_running_at_planned_boundary`.
+- The planned boundary is preserved for provenance and is not used for scoring.
+- The operational boundary is frozen because the production Collector first supplied a complete live-collected hour there, before any Forward OOS strategy performance or selector result was recorded.
+- Any market data timestamped between the planned and operational boundaries is history/warm-up only. Later REST backfill in that interval can never become Forward OOS performance retroactively.
+- Forward League records reject timestamps before the operational boundary.
+- Forward scoring accepts post-operational-boundary live Collector sources only: `binance_usdm_rest` for Futures/Funding/OI and `binance_spot_rest` for Spot.
 - Binance Vision archive rows remain history/warm-up only even if appended later.
+- A legacy `league_metadata.json` containing only the original planned boundary may migrate to the planned/operational structure only if no append-only League records exist yet. Otherwise migration fails closed.
 
 ## Frozen Strategy Registry
 
@@ -40,7 +45,7 @@ Append-only Market Store
   -> Hypothetical Selector Decision
 ```
 
-`forward_oos_league_runner.py` replays the frozen implementations from the fixed Forward boundary and appends only new records. Common-engine strategies discard artificial `end_of_test` closures, so a currently open hypothetical position is not falsely booked as a completed trade merely because the League process stops or restarts.
+`forward_oos_league_runner.py` replays the frozen implementations from the frozen operational Forward boundary and appends only new records. Common-engine strategies discard artificial `end_of_test` closures, so a currently open hypothetical position is not falsely booked as a completed trade merely because the League process stops or restarts.
 
 The separate `forward_oos_league_daemon.py` can repeat this research-only run every five minutes. It always calls the selector with the Risk Gate closed and cannot create Paper or Live orders. It is not automatically installed or started by this PR.
 
@@ -103,7 +108,7 @@ overlap/date=YYYY-MM-DD/part-*.parquet
 scorecards/date=YYYY-MM-DD/part-*.parquet
 ```
 
-`league_metadata.json` permanently records the Forward boundary and confirms orders, Paper Trading and automatic promotion are disabled. `latest_league_run.json` records the latest data-quality, Collector-health, regime, selector and conflict snapshot.
+`league_metadata.json` permanently records both `planned_forward_oos_start_utc` and `operational_forward_oos_start_utc`, the audit reason for the operational freeze, and confirms orders, Paper Trading and automatic promotion are disabled. `latest_league_run.json` records the latest data-quality, Collector-health, regime, selector and conflict snapshot.
 
 Forward scorecards always include sample size alongside hypothetical trade count, Gross/Net return, MDD, Sharpe, Profit Factor, Win Rate, fees, slippage, Funding and average holding time. Small-sample risk-adjusted metrics must not be over-interpreted.
 

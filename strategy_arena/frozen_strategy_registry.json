@@ -1,7 +1,10 @@
 {
-  "registry_version": 1,
+  "registry_version": 2,
   "historical_backtest_cutoff_utc": "2026-06-30T23:59:59.999+00:00",
-  "forward_oos_start_utc": "2026-07-01T00:00:00+00:00",
+  "planned_forward_oos_start_utc": "2026-07-01T00:00:00+00:00",
+  "operational_forward_oos_start_utc": "2026-07-21T15:00:00+00:00",
+  "operational_start_reason": "collector_not_running_at_planned_boundary",
+  "forward_oos_start_utc": "2026-07-21T15:00:00+00:00",
   "strategies": [
     {
       "strategy_name": "funding_carry",
