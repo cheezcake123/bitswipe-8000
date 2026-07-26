@@ -1,6 +1,6 @@
 # Third-Party Dependency Audit
 
-Audit date: 2026-07-19
+Audit date: 2026-07-26
 
 This is an inventory aid, not a complete license bundle or legal conclusion.
 
@@ -31,7 +31,7 @@ Observed by the expanded production virtual-environment inventory:
 
 Version-specific upstream verification for Peewee 4.0.6 confirmed that its tagged LICENSE is an MIT-form permission notice with a Charles Leifer copyright notice. The installed UNKNOWN metadata is therefore treated as incomplete package metadata, not evidence of a proprietary or unknown license.
 
-MPL-2.0 is file-level copyleft. Its presence in a server-side dependency does not by itself relicense unrelated downstream files. Obligations depend on whether covered software is modified and whether copies of covered software are distributed outside the organization. A hosted web service is not treated here as equivalent to distributing the server-side Python package itself.
+MPL-2.0 is treated here as a review trigger, not as evidence that unrelated downstream application files inherit MPL. Obligations depend on the covered files, modifications, and the artifacts actually distributed.
 
 ## Browser dependencies referenced by the legacy root page
 
@@ -39,14 +39,20 @@ MPL-2.0 is file-level copyleft. Its presence in a server-side dependency does no
 - Marked — MIT — loaded from jsDelivr
 - Inter — SIL Open Font License 1.1 — loaded through Google Fonts
 
+## Repository-local media
+
+Repository-local icons and images are not third-party dependencies merely because they are static files. Their ownership/provenance is audited separately in `STATIC_ASSET_AUDIT.md`.
+
+The current audit found eight such files, all first captured in the same repository snapshot commit. Repository evidence did not establish their creator, source, or license, so they remain UNKNOWN until provenance is established or the assets are replaced.
+
 ## External services and hosts
 
 The page also references Binance API hosts, jsDelivr, Google Fonts, and bitswipe.xyz. Service terms and privacy requirements are separate from open-source license inventory and should be reviewed before public launch.
 
 ## Remaining work
 
-- review static images, icons, screenshots, and copied frontend assets
 - determine whether deployment or download artifacts will redistribute third-party packages rather than only run them server-side
 - prepare complete license texts and required notices for components actually redistributed
 - recover or independently verify the original upstream project's exact copyright/license notice before choosing a downstream root LICENSE
-- keep upstream project provenance separate from the downstream project's own license decision
+- establish provenance or replace UNKNOWN repository-local media assets
+- keep upstream project provenance, dependency licenses, and downstream media ownership separate
