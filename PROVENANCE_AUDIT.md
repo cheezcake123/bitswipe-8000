@@ -28,6 +28,14 @@ The repository history positively establishes that the upstream project describe
 
 The repository history does **not** provide the complete MIT permission text, a copyright line, a copyright year, or a standalone license/notice file. Therefore this project must not invent those missing fields or manufacture an upstream license notice from assumptions.
 
+## Verified downstream/upstream implementation continuity
+
+A same-path normalized-line overlap scan was run against downstream commit `9ba492260b79695cb0a66390ad766d542bb409d1` and the current upstream default branch on 2026-07-26. Detailed methodology and results are recorded in `CODE_OVERLAP_AUDIT.md`.
+
+The scan found many 100% same-path normalized-line matches across core modules and tests. Central runtime files also remained highly similar, including `server.py` at 79.6% and `analyzer.py` at 73.3% under the audit metric.
+
+This confirms substantial implementation continuity with upstream. The metric is an engineering provenance signal, not a legal substantial-similarity test. Renaming, redesigning, or adding features does not by itself remove provenance/license obligations for retained upstream implementation.
+
 ## Current downstream state
 
 - repository `cheezcake123/bitswipe-8000` is currently public on GitHub
@@ -39,6 +47,7 @@ The repository history does **not** provide the complete MIT permission text, a 
 - repository-local media assets were inventoried in `STATIC_ASSET_AUDIT.md`
 - all eight discovered repository-local media assets first appear in snapshot commit `1540ab4dbda206535a477623c9f39310d2ba2007`
 - that snapshot commit does not establish authorship, source, or license for those assets, so their provenance remains UNKNOWN
+- implementation continuity with upstream is recorded in `CODE_OVERLAP_AUDIT.md`
 
 ## Conservative release gate
 
@@ -46,15 +55,18 @@ Do not invent an upstream copyright holder, year, or full MIT notice. The next r
 
 Do not assume the repository-local icons and images are project-owned merely because they are present in the repository. Establish their provenance or replace them with newly created assets whose authorship and licensing are documented.
 
+Do not describe the current implementation as independently rewritten from scratch while high-overlap upstream-derived files remain. Any independent reimplementation should be tracked in small, behavior-preserving slices and audited again after each tranche.
+
 Because the downstream GitHub repository is already public, these are current provenance/compliance issues rather than only future release checks.
 
 ## Remaining checks
 
 1. obtain or independently verify the upstream project's exact copyright/license notice
 2. establish provenance or replace the eight UNKNOWN media assets listed in `STATIC_ASSET_AUDIT.md`
-3. decide whether deployment/download artifacts redistribute third-party packages or only run them server-side
-4. prepare the required third-party notices/license texts for artifacts actually redistributed
-5. update README provenance
-6. decide the downstream project's own license separately from upstream attribution obligations and media ownership
+3. reduce upstream implementation dependence through independently designed, tested rewrites where appropriate
+4. decide whether deployment/download artifacts redistribute third-party packages or only run them server-side
+5. prepare the required third-party notices/license texts for artifacts actually redistributed
+6. update README provenance
+7. decide the downstream project's own license separately from upstream attribution obligations and media ownership
 
 This file records an engineering inventory/provenance audit and is not legal advice or a legal conclusion.
