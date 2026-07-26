@@ -6,15 +6,31 @@ Upstream repository referenced by the current project README:
 
 https://github.com/likegyu/bitcoin-trading-manager
 
-## Observed upstream state
+## Verified upstream Git-history evidence
 
-- the current project README points to the upstream repository above
-- that README contains a License section naming MIT
-- a standalone upstream root LICENSE file with the exact copyright-and-permission notice was not recovered during this audit
-- no upstream copyright holder, year, or permission notice has been inferred from the `MIT` label alone
+A full local clone/history scan of the upstream repository was run on 2026-07-26.
+
+- upstream root commit: `7026e7b3cd8f22456bc0f4abae26ca223821f0eb`
+- root commit author/committer recorded by Git: `gyu <gyu@gyuui-MacBookAir.local>`
+- root commit timestamp: `2026-03-30T11:02:09+09:00`
+- root commit subject: `feat: BTC signal analyzer with macro indicators`
+- README introduction commit: `98f9210a17fe9f75819bd91de3a080c4920cb585`
+- README timestamp: `2026-03-30T11:16:07+09:00`
+- that first README already contained both a `license-MIT` badge and a `## License` section whose only license text was `MIT`
+- scanning every revision found no path named `LICENSE`, `COPYING`, or `NOTICE`
+- scanning all revisions found no repository text containing `Copyright`, `Permission is hereby granted`, or `MIT License`
+
+The Git author name/email above is commit metadata only. This audit does not treat it as proof of the legal copyright holder or as a substitute for a copyright-and-permission notice.
+
+## What the history does and does not establish
+
+The repository history positively establishes that the upstream project described itself as `MIT` from the first README commit.
+
+The repository history does **not** provide the complete MIT permission text, a copyright line, a copyright year, or a standalone license/notice file. Therefore this project must not invent those missing fields or manufacture an upstream license notice from assumptions.
 
 ## Current downstream state
 
+- repository `cheezcake123/bitswipe-8000` is currently public on GitHub
 - deployment branch has no root LICENSE file
 - deployment branch has no root NOTICE file
 - direct deployed Python dependencies were inventoried from the service virtual environment
@@ -26,17 +42,19 @@ https://github.com/likegyu/bitcoin-trading-manager
 
 ## Conservative release gate
 
-Do not invent an upstream copyright holder, year, or MIT notice. Before public source redistribution, recover the upstream notice from repository history or the maintainer, or obtain clarification from the upstream maintainer.
+Do not invent an upstream copyright holder, year, or full MIT notice. The next reliable path is to obtain the exact intended license/copyright notice directly from the upstream maintainer or another verifiable upstream artifact that contains it.
 
 Do not assume the repository-local icons and images are project-owned merely because they are present in the repository. Establish their provenance or replace them with newly created assets whose authorship and licensing are documented.
 
-## Remaining checks before public release
+Because the downstream GitHub repository is already public, these are current provenance/compliance issues rather than only future release checks.
 
-1. recover or independently verify the original upstream project's exact copyright/license notice
+## Remaining checks
+
+1. obtain or independently verify the upstream project's exact copyright/license notice
 2. establish provenance or replace the eight UNKNOWN media assets listed in `STATIC_ASSET_AUDIT.md`
 3. decide whether deployment/download artifacts redistribute third-party packages or only run them server-side
 4. prepare the required third-party notices/license texts for artifacts actually redistributed
-5. update README provenance before public release
+5. update README provenance
 6. decide the downstream project's own license separately from upstream attribution obligations and media ownership
 
-This file records an engineering audit and is not legal advice.
+This file records an engineering inventory/provenance audit and is not legal advice or a legal conclusion.
