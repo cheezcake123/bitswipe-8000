@@ -11,7 +11,9 @@ ASSET_EXTENSIONS = {
     ".ico", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg",
     ".woff", ".woff2", ".ttf", ".otf", ".eot",
 }
-REFERENCE_EXTENSIONS = {".html", ".css", ".js", ".md"}
+# Restrict provenance/reference evidence to runtime frontend source files.
+# Audit/docs files must not become self-referential provenance evidence.
+REFERENCE_EXTENSIONS = {".html", ".css", ".js"}
 SKIP_PARTS = {".git", ".venv", "venv", "__pycache__", "node_modules"}
 URL_RE = re.compile(r"https?://[^\s\"'<>)] +".replace(" ", ""), re.IGNORECASE)
 
@@ -98,6 +100,7 @@ def main() -> None:
     print()
     print("Notes:")
     print("- UNKNOWN means repository-local evidence was not found by this read-only scan.")
+    print("- Reference/URL evidence is limited to runtime .html/.css/.js files; audit Markdown is excluded.")
     print("- This script does not make ownership or license conclusions.")
     print("- .env contents are never read and network access is not used.")
 
